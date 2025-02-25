@@ -15,7 +15,7 @@ import { DealersService } from './dealers.service';
 import { CreateDealerDto } from './dto/create-dealer.dto';
 import { UpdateDealerDto } from './dto/update-dealer.dto';
 
-@Controller('dealers')
+@Controller('dealers')  // Changed the base route to 'dealers'
 export class DealersController {
   constructor(private readonly dealersService: DealersService) {}
 

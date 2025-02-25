@@ -4,7 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { DealersModule } from './modules/dealers/dealers.module';
 import { SurveysModule } from './modules/surveys/surveys.module';
 import { GoogleDriveModule } from './modules/google-drive/google-drive.module';
-import { AppController } from './app.controller';
+import { SurveyFormModule } from './modules/survey-form/survey-form.module';
 
 @Module({
   imports: [
@@ -17,16 +17,16 @@ import { AppController } from './app.controller';
         type: 'postgres',
         url: configService.get('DATABASE_URL'),
         autoLoadEntities: true,
-        synchronize: false, // Set this to false
+        synchronize: false,
         migrations: [__dirname + '/migrations/**/*{.ts,.js}'],
-        migrationsRun: true, // This will run migrations automatically
+        migrationsRun: true,
       }),
       inject: [ConfigService],
     }),
     DealersModule,
     SurveysModule,
     GoogleDriveModule,
+    SurveyFormModule,
   ],
-  controllers: [AppController],
 })
 export class AppModule {}

@@ -3,13 +3,13 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { SurveysController } from './survey.controller';
 import { SurveysService } from './surveys.service';
 import { Survey } from './survey.entity';
-import { GoogleDriveModule } from '../google-drive/google-drive.module';
+import { S3Module } from '../s3/s3.module';
 import { CompressionModule } from '../compression/compression.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Survey]),
-    GoogleDriveModule,
+    S3Module,
     CompressionModule,
   ],
   controllers: [SurveysController],

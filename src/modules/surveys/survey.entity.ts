@@ -1,4 +1,4 @@
-import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, CreateDateColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, CreateDateColumn, JoinColumn } from 'typeorm';
 import { Dealer } from '../dealers/dealer.entity';
 
 @Entity('surveys')
@@ -24,6 +24,7 @@ export class Survey {
   @CreateDateColumn()
   created_at: Date;
 
-  @ManyToOne(() => Dealer)
+  @ManyToOne(() => Dealer, { eager: false })
+  @JoinColumn({ name: 'dealer_id', referencedColumnName: 'dealer_id' })
   dealer: Dealer;
 } 

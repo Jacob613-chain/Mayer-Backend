@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{title}} - Site Survey Form</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        .header {
+            text-align: center;
+            padding: 20px;
+        }
+        .logo {
+            max-width: 200px;
+            height: auto;
+            margin: 20px auto;
+            display: block;
+        }
+        .form-container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .form-title {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        {{#if logo}}
+            <img src="{{logo}}" alt="{{title}} Logo" class="logo">
+        {{/if}}
+        <h1 class="form-title">{{title}} Site Survey Form</h1>
+    </div>
+    <div class="form-container">
+        <!-- Form content will go here -->
+    </div>
+</body>
+</html>
