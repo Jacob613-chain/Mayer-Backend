@@ -5,6 +5,7 @@ import { DealersModule } from './modules/dealers/dealers.module';
 import { SurveysModule } from './modules/surveys/surveys.module';
 import { GoogleDriveModule } from './modules/google-drive/google-drive.module';
 import { SurveyFormModule } from './modules/survey-form/survey-form.module';
+import { AdminModule } from './modules/admin/admin.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { SurveyFormModule } from './modules/survey-form/survey-form.module';
     SurveysModule,
     GoogleDriveModule,
     SurveyFormModule,
+    AdminModule, // Make sure this is here
   ],
 })
 export class AppModule {}

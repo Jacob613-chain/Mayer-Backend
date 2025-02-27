@@ -156,28 +156,23 @@ export class DealersService {
   }
 
   async findByDealerId(dealerId: string): Promise<Dealer> {
+    this.logger.debug(`Attempting to find dealer with dealer_id: ${dealerId}`);
+    
     const dealer = await this.dealersRepository.findOne({ 
       where: { dealer_id: dealerId },
       select: ['id', 'dealer_id', 'name', 'logo', 'reps']
     });
     
+    this.logger.debug(`Search result for dealer_id ${dealerId}:`, dealer);
+    
     if (!dealer) {
+      this.logger.warn(`Dealer with dealer_id "${dealerId}" not found`);
       throw new NotFoundException(`Dealer with dealer_id "${dealerId}" not found`);
     }
 
     // Ensure reps is always an array with at least an empty string
     if (!dealer.reps || dealer.reps.length === 0) {
       dealer.reps = [""];
-    } else if (typeof dealer.reps === 'string') {
-      try {
-        const parsedReps = JSON.parse(dealer.reps as string);
-        dealer.reps = Array.isArray(parsedReps) ? parsedReps : [parsedReps];
-        if (dealer.reps.length === 0) {
-          dealer.reps = [""];
-        }
-      } catch {
-        dealer.reps = [dealer.reps as unknown as string];
-      }
     }
 
     return dealer;

@@ -1,15 +1,17 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { Dealer } from '../dealers/dealer.entity';
 import { DealersService } from '../dealers/dealers.service';
+import { SurveysService } from '../surveys/surveys.service';
 
 @Injectable()
 export class SurveyFormService {
+  submitSurvey(dealerId: string, formData: any, files: Express.Multer.File[]) {
+    throw new Error('Method not implemented.');
+  }
   private readonly logger = new Logger(SurveyFormService.name);
 
   constructor(
-    private readonly dealersService: DealersService
+    private readonly dealersService: DealersService,
+    private readonly surveysService: SurveysService
   ) {}
 
   async getDealerInfo(dealerId: string) {
@@ -23,4 +25,6 @@ export class SurveyFormService {
       throw error;
     }
   }
+
+  // ... rest of your service methods
 }

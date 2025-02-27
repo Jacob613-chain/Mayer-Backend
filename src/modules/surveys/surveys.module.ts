@@ -14,5 +14,6 @@ import { CompressionModule } from '../compression/compression.module';
   ],
   controllers: [SurveysController],
   providers: [SurveysService],
+  exports: [SurveysService],
 })
 export class SurveysModule {} 

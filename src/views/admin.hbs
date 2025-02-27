@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dealer Administration</title>
+    <style>
+        /* Your existing styles */
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Dealer Administration</h1>
+        <table id="dealersTable">
+            <thead>
+                <tr>
+                    <th>Dealer ID</th>
+                    <th>Name</th>
+                    <th>Reps</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{#each dealers}}
+                <tr>
+                    <td>{{dealer_id}}</td>
+                    <td>{{name}}</td>
+                    <td>{{reps}}</td>
+                    <td class="action-buttons">
+                        <button class="btn btn-edit" onclick="editDealer('{{id}}')">Edit</button>
+                        <button class="btn btn-delete" onclick="deleteDealer('{{id}}')">Delete</button>
+                        <button class="btn btn-view-form" onclick="viewForm('{{dealer_id}}')">View Form</button>
+                    </td>
+                </tr>
+                {{/each}}
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        function viewForm(dealerId) {
+            const origin = window.location.origin;
+            window.location.href = `${origin}/dealers/by-dealer-id/${dealerId}`;
+        }
+
+        async function editDealer(id) {
+            // Your edit logic
+        }
+
+        async function deleteDealer(id) {
+            // Your delete logic
+        }
+    </script>
+</body>
+</html>

@@ -9,6 +9,7 @@ import {
   UseInterceptors,
   UploadedFile,
   NotFoundException,
+  Logger,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { DealersService } from './dealers.service';
@@ -17,7 +18,28 @@ import { UpdateDealerDto } from './dto/update-dealer.dto';
 
 @Controller('dealers')  // Changed the base route to 'dealers'
 export class DealersController {
+  private readonly logger = new Logger(DealersController.name);
+
   constructor(private readonly dealersService: DealersService) {}
+
+  @Get('by-dealer-id/:dealer_id')
+  async findByDealerId(@Param('dealer_id') dealerId: string) {
+    this.logger.debug(`Received request for dealer_id: ${dealerId}`);
+    try {
+      const dealer = await this.dealersService.findByDealerId(dealerId);
+      this.logger.debug(`Found dealer:`, dealer);
+      return {
+        system_id: dealer.id,
+        dealer_id: dealer.dealer_id,
+        name: dealer.name,
+        logo: dealer.logo,
+        reps: dealer.reps
+      };
+    } catch (error) {
+      this.logger.error(`Error finding dealer:`, error);
+      throw error;
+    }
+  }
 
   @Get()
   async findAll() {
