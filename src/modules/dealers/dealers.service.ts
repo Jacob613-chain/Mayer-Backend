@@ -1,10 +1,11 @@
-import { Injectable, NotFoundException, Logger, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger, InternalServerErrorException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Dealer } from './dealer.entity';
-import { S3Service } from '../s3/s3.service';
+import { GoogleDriveService } from '../google-drive/google-drive.service';
 import { CreateDealerDto } from './dto/create-dealer.dto';
 import { UpdateDealerDto } from './dto/update-dealer.dto';
+import { UploadFailedException } from '../../common/exceptions/upload.exception';
 
 @Injectable()
 export class DealersService {
@@ -13,175 +14,206 @@ export class DealersService {
   constructor(
     @InjectRepository(Dealer)
     private dealersRepository: Repository<Dealer>,
-    private s3Service: S3Service,
-  ) {}
+    private googleDriveService: GoogleDriveService,
+  ) { }
 
-  async create(createDealerDto: CreateDealerDto, logo?: Express.Multer.File): Promise<Dealer> {
-    const dealer = this.dealersRepository.create({
-      ...createDealerDto,
-      reps: createDealerDto.reps || [""] // Initialize with empty string if not provided
-    });
+  async create(createDealerDto: CreateDealerDto, logoFile?: Express.Multer.File): Promise<Dealer> {
+    try {
+      // First check if dealer_id already exists
+      const existingDealer = await this.dealersRepository.findOne({
+        where: { dealer_id: createDealerDto.dealer_id }
+      });
 
-    if (logo) {
-      const logoUrl = await this.s3Service.uploadFile(logo, 'dealer-logos');
-      dealer.logo = logoUrl;
+      if (existingDealer) {
+        throw new BadRequestException(`Dealer with dealer_id "${createDealerDto.dealer_id}" already exists`);
+      }
+
+      let logoUrl: string | undefined;
+
+      if (logoFile) {
+        this.logger.debug('Processing logo file:', {
+          originalname: logoFile.originalname,
+          mimetype: logoFile.mimetype,
+          size: logoFile.size,
+          buffer: logoFile.buffer ? 'Buffer present' : 'No buffer'
+        });
+
+        try {
+          logoUrl = await this.googleDriveService.uploadFile(
+            logoFile,
+            'dealer-logos'
+          );
+
+          if (!logoUrl) {
+            throw new Error('Upload succeeded but no URL was returned');
+          }
+
+          this.logger.debug('Logo uploaded successfully:', logoUrl);
+        } catch (error) {
+          this.logger.error('Failed to upload logo:', error);
+          if (error instanceof UploadFailedException) {
+            throw new BadRequestException('Failed to upload logo: Invalid file format or corrupted image');
+          }
+          throw new InternalServerErrorException('Failed to upload logo to storage');
+        }
+      }
+
+      const dealer = this.dealersRepository.create({
+        ...createDealerDto,
+        logo: logoUrl || null,
+        reps: createDealerDto.reps || [""]
+      });
+
+      const savedDealer = await this.dealersRepository.save(dealer);
+      this.logger.debug('Dealer saved with data:', {
+        id: savedDealer.id,
+        dealer_id: savedDealer.dealer_id,
+        logo: savedDealer.logo
+      });
+
+      return savedDealer;
+    } catch (error) {
+      this.logger.error(`Failed to create dealer: ${error.message}`, error.stack);
+      if (error instanceof BadRequestException || error instanceof InternalServerErrorException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to create dealer');
     }
-
-    return this.dealersRepository.save(dealer);
   }
 
-  async update(id: string, updateDealerDto: UpdateDealerDto, logo?: Express.Multer.File): Promise<Dealer> {
+  async update(id: string, updateDealerDto: UpdateDealerDto, logoFile?: Express.Multer.File): Promise<Dealer> {
     try {
-      this.logger.debug(`Attempting to update dealer with ID: ${id}`);
-      this.logger.debug('Update DTO:', updateDealerDto);
-      
-      const dealer = await this.dealersRepository.findOne({ 
+      const dealer = await this.dealersRepository.findOne({
         where: { id },
         select: ['id', 'dealer_id', 'name', 'logo', 'reps']
       });
-      
+
       if (!dealer) {
         throw new NotFoundException(`Dealer with ID "${id}" not found`);
       }
 
+      let logoUrl = dealer.logo;
+      if (logoFile) {
+        try {
+          // Delete existing logo if it exists
+          if (dealer.logo) {
+            const fileId = dealer.logo.split('=').pop();
+            try {
+              await this.googleDriveService.deleteFile(fileId);
+            } catch (error) {
+              this.logger.warn(`Failed to delete old logo: ${error.message}`);
+            }
+          }
+
+          // Upload new logo
+          logoUrl = await this.googleDriveService.uploadFile(
+            logoFile,
+            'dealer-logos'
+          );
+        } catch (error) {
+          this.logger.error('Failed to upload new logo:', error);
+          if (error instanceof UploadFailedException) {
+            throw new BadRequestException('Failed to upload logo: Invalid file format or corrupted image');
+          }
+          throw new InternalServerErrorException('Failed to upload logo to storage');
+        }
+      }
+
       // Update basic fields if provided
       if (updateDealerDto.name) dealer.name = updateDealerDto.name;
-      
+      dealer.logo = logoUrl;
+
       // Handle reps update
       if (updateDealerDto.reps !== undefined) {
-        // Clean handling of reps
-        let processedReps: string[] = [];
-        
-        if (Array.isArray(updateDealerDto.reps)) {
-          // If it's already an array, use it directly
-          processedReps = updateDealerDto.reps.map(String);
-        } else if (typeof updateDealerDto.reps === 'string') {
-          try {
-            // Check if it's a JSON string that looks like an array
-            const cleanString = (updateDealerDto.reps as string).replace(/^"+|"+$/g, '');
-            
-            // Check if it's a PostgreSQL array format like "{\"qw\",\"wer\",\"wet\",\"qwe\"}"
-            if (cleanString.startsWith('{') && cleanString.endsWith('}')) {
-              // Parse PostgreSQL array format
-              const content = cleanString.slice(1, -1); // Remove { and }
-              processedReps = content
-                .split(',')
-                .map(item => item.replace(/^\\"|\\"|"/g, '').trim()) // Remove escaped quotes
-                .filter(item => item.length > 0);
-            } else {
-              // Try regular JSON parsing
-              try {
-                const parsed = JSON.parse(cleanString);
-                if (Array.isArray(parsed)) {
-                  processedReps = parsed.map(String);
-                } else {
-                  processedReps = [cleanString];
-                }
-              } catch {
-                processedReps = [cleanString];
-              }
-            }
-          } catch {
-            processedReps = [updateDealerDto.reps];
-          }
-        }
-        
+        let processedReps: string[] = Array.isArray(updateDealerDto.reps)
+          ? updateDealerDto.reps
+          : [updateDealerDto.reps];
+
         // Ensure we have at least an empty string if array is empty
         if (processedReps.length === 0) {
           processedReps = [""];
         }
-        
+
         dealer.reps = processedReps;
-        this.logger.debug('Processed reps array:', dealer.reps);
       }
 
-      // Handle logo upload if provided
-      if (logo) {
-        const logoUrl = await this.s3Service.uploadFile(logo, 'dealer-logos');
-        dealer.logo = logoUrl;
-      }
-
-      const updatedDealer = await this.dealersRepository.save(dealer);
-      this.logger.debug('Successfully updated dealer:', updatedDealer);
-      return updatedDealer;
-      
+      return await this.dealersRepository.save(dealer);
     } catch (error) {
-      this.logger.error('Error updating dealer:', error);
-      if (error instanceof NotFoundException) {
+      this.logger.error(`Failed to update dealer: ${error.message}`, error.stack);
+      if (error instanceof NotFoundException || error instanceof BadRequestException || error instanceof InternalServerErrorException) {
         throw error;
       }
       throw new InternalServerErrorException('Failed to update dealer');
     }
   }
 
-  async findAll(): Promise<Dealer[]> {
-    const dealers = await this.dealersRepository.find();
-    
-    // Ensure each dealer has at least an empty string in reps array
-    dealers.forEach(dealer => {
-      if (!dealer.reps || dealer.reps.length === 0) {
-        dealer.reps = [""];
+  async delete(id: string): Promise<void> {
+    try {
+      const dealer = await this.dealersRepository.findOne({ where: { id } });
+      if (!dealer) {
+        throw new NotFoundException(`Dealer with ID "${id}" not found`);
       }
-    });
-    
-    return dealers;
+
+      await this.dealersRepository.delete(id);
+    } catch (error) {
+      this.logger.error(`Failed to delete dealer: ${error.message}`, error.stack);
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to delete dealer');
+    }
+  }
+
+  async findAll(): Promise<Dealer[]> {
+    try {
+      return await this.dealersRepository.find({
+        select: ['id', 'dealer_id', 'name', 'logo', 'reps']
+      });
+    } catch (error) {
+      this.logger.error(`Failed to fetch dealers: ${error.message}`, error.stack);
+      throw new InternalServerErrorException('Failed to fetch dealers');
+    }
   }
 
   async findOne(id: string): Promise<Dealer> {
-    const dealer = await this.dealersRepository.findOne({ 
-      where: { id },
-      select: ['id', 'dealer_id', 'name', 'logo', 'reps']
-    });
-    
-    if (!dealer) {
-      throw new NotFoundException(`Dealer with ID "${id}" not found`);
-    }
+    try {
+      const dealer = await this.dealersRepository.findOne({
+        where: { id },
+        select: ['id', 'dealer_id', 'name', 'logo', 'reps']
+      });
 
-    // Ensure reps is always an array with at least an empty string
-    if (!dealer.reps || dealer.reps.length === 0) {
-      dealer.reps = [""];
-    } else if (typeof dealer.reps === 'string') {
-      try {
-        const parsedReps = JSON.parse(dealer.reps as string);
-        dealer.reps = Array.isArray(parsedReps) ? parsedReps : [parsedReps];
-        if (dealer.reps.length === 0) {
-          dealer.reps = [""];
-        }
-      } catch {
-        dealer.reps = [dealer.reps as unknown as string];
+      if (!dealer) {
+        throw new NotFoundException(`Dealer with ID "${id}" not found`);
       }
-    }
 
-    return dealer;
+      return dealer;
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      this.logger.error(`Failed to fetch dealer: ${error.message}`, error.stack);
+      throw new InternalServerErrorException('Failed to fetch dealer');
+    }
   }
 
   async findByDealerId(dealerId: string): Promise<Dealer> {
-    this.logger.debug(`Attempting to find dealer with dealer_id: ${dealerId}`);
-    
-    const dealer = await this.dealersRepository.findOne({ 
-      where: { dealer_id: dealerId },
-      select: ['id', 'dealer_id', 'name', 'logo', 'reps']
-    });
-    
-    this.logger.debug(`Search result for dealer_id ${dealerId}:`, dealer);
-    
-    if (!dealer) {
-      this.logger.warn(`Dealer with dealer_id "${dealerId}" not found`);
-      throw new NotFoundException(`Dealer with dealer_id "${dealerId}" not found`);
-    }
+    try {
+      const dealer = await this.dealersRepository.findOne({
+        where: { dealer_id: dealerId },
+        select: ['id', 'dealer_id', 'name', 'logo', 'reps']
+      });
 
-    // Ensure reps is always an array with at least an empty string
-    if (!dealer.reps || dealer.reps.length === 0) {
-      dealer.reps = [""];
-    }
+      if (!dealer) {
+        throw new NotFoundException(`Dealer with dealer_id "${dealerId}" not found`);
+      }
 
-    return dealer;
-  }
-
-  async delete(id: string): Promise<void> {
-    const result = await this.dealersRepository.delete(id);
-    if (result.affected === 0) {
-      throw new NotFoundException(`Dealer with ID "${id}" not found`);
+      return dealer;
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      this.logger.error(`Failed to fetch dealer by dealer_id: ${error.message}`, error.stack);
+      throw new InternalServerErrorException('Failed to fetch dealer');
     }
   }
 }

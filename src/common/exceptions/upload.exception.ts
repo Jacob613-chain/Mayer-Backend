@@ -1,7 +1,7 @@
 export class UploadFailedException extends Error {
   constructor(
     message: string,
-    public readonly service: 'S3' | 'GoogleDrive',
+    public readonly service: 'GoogleDrive',
     public readonly originalError: Error
   ) {
     super(message);

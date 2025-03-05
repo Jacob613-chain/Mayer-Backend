@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import * as sharp from 'sharp';
 
 interface CompressionOptions {
@@ -25,48 +25,76 @@ export class CompressionService {
     const settings = { ...this.defaultOptions, ...options };
 
     try {
-      let sharpInstance = sharp(file.buffer);
+      // Validate file input
+      if (!file || !file.buffer) {
+        throw new BadRequestException('No file or empty file provided');
+      }
 
-      // Get image metadata
-      const metadata = await sharpInstance.metadata();
+      // Validate file size
+      if (file.size === 0) {
+        throw new BadRequestException('File is empty');
+      }
 
-      // Calculate new dimensions while maintaining aspect ratio
-      if (metadata.width && metadata.height) {
-        const aspectRatio = metadata.width / metadata.height;
-        let newWidth = metadata.width;
-        let newHeight = metadata.height;
+      // Validate mime type
+      if (!file.mimetype.startsWith('image/')) {
+        throw new BadRequestException('File is not an image');
+      }
 
-        if (newWidth > settings.maxWidth) {
-          newWidth = settings.maxWidth;
-          newHeight = Math.round(newWidth / aspectRatio);
-        }
-
-        if (newHeight > settings.maxHeight) {
-          newHeight = settings.maxHeight;
-          newWidth = Math.round(newHeight * aspectRatio);
-        }
-
-        sharpInstance = sharpInstance.resize(newWidth, newHeight, {
-          fit: 'inside',
-          withoutEnlargement: true,
+      // Create sharp instance with detailed error handling
+      let sharpInstance: sharp.Sharp;
+      try {
+        sharpInstance = sharp(file.buffer, {
+          failOnError: true,
+          animated: false // Disable animated image support
         });
+      } catch (error) {
+        this.logger.error(`Sharp initialization failed: ${error.message}`);
+        throw new BadRequestException(`Invalid image format: ${error.message}`);
       }
 
-      // Apply compression based on format
-      if (settings.format === 'webp') {
-        return await sharpInstance
-          .webp({ quality: settings.quality })
-          .toBuffer();
-      } else {
-        return await sharpInstance
-          .jpeg({ quality: settings.quality, mozjpeg: true })
-          .toBuffer();
+      // Validate image metadata
+      const metadata = await sharpInstance.metadata().catch(error => {
+        this.logger.error(`Metadata extraction failed: ${error.message}`);
+        throw new BadRequestException(`Failed to read image metadata: ${error.message}`);
+      });
+
+      if (!metadata || !metadata.format) {
+        throw new BadRequestException('Unable to determine image format');
       }
+
+      // Process the image with proper error handling
+      return await sharpInstance
+        .rotate() // Auto-rotate based on EXIF data
+        .resize({
+          width: settings.maxWidth,
+          height: settings.maxHeight,
+          fit: 'inside',
+          withoutEnlargement: true
+        })
+        .jpeg({ 
+          quality: settings.quality,
+          mozjpeg: true,
+          force: settings.format === 'jpeg'
+        })
+        .toBuffer()
+        .catch(error => {
+          this.logger.error(`Image processing failed: ${error.message}`);
+          throw new BadRequestException(`Failed to process image: ${error.message}`);
+        });
+
     } catch (error) {
       this.logger.error(
-        `Failed to compress image ${file.originalname}: ${error.message}`
+        `Image compression failed for ${file.originalname}: ${error.message}`,
+        error.stack
       );
-      throw error;
+      
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      
+      throw new BadRequestException(
+        'Failed to process image. Please ensure it is a valid image file and try again.'
+      );
     }
   }
 
@@ -74,6 +102,10 @@ export class CompressionService {
     files: Express.Multer.File[],
     options?: Partial<CompressionOptions>
   ): Promise<{ buffer: Buffer; originalname: string }[]> {
+    if (!Array.isArray(files) || files.length === 0) {
+      throw new BadRequestException('No files provided for batch compression');
+    }
+
     const compressedFiles = await Promise.all(
       files.map(async (file) => {
         const buffer = await this.compressImage(file, options);

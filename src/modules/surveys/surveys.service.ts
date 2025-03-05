@@ -2,10 +2,10 @@ import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ILike, Repository, Brackets } from 'typeorm';
 import { Survey } from './survey.entity';
-import { S3Service } from '../s3/s3.service';
 import { CreateSurveyDto } from './dto/create-survey.dto';
 import { SearchSurveyDto } from './dto/search-survey.dto';
 import { CompressionService } from '../compression/compression.service';
+import { GoogleDriveService } from '../google-drive/google-drive.service';
 import { Dealer } from '../dealers/dealer.entity';
 
 @Injectable()
@@ -15,8 +15,8 @@ export class SurveysService {
   constructor(
     @InjectRepository(Survey)
     private surveyRepository: Repository<Survey>,
-    private s3Service: S3Service,
     private compressionService: CompressionService,
+    private googleDriveService: GoogleDriveService,
   ) {}
 
   private async uploadFilesToS3(
@@ -39,14 +39,16 @@ export class SurveysService {
       );
 
       // Upload compressed files
-      const uploadPromises = compressedFiles.map((compressedFile, index) =>
-        this.s3Service.uploadCompressedFile(
-          files[index],
-          folderName,
-          compressedFile.buffer,
-          compressedFile.originalname
-        )
-      );
+      const uploadPromises = compressedFiles.map((compressedFile, index) => {
+        // Create a modified file object with the compressed buffer
+        const modifiedFile: Express.Multer.File = {
+          ...files[index],
+          buffer: compressedFile.buffer,
+          originalname: compressedFile.originalname
+        };
+        
+        return this.googleDriveService.uploadFile(modifiedFile, folderName);
+      });
 
       return await Promise.all(uploadPromises);
     } catch (error) {

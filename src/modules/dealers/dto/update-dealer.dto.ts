@@ -5,6 +5,10 @@ export class UpdateDealerDto {
   @IsOptional()
   name?: string;
 
+  @IsString()
+  @IsOptional()
+  logo?: string;
+
   @IsArray()
   @IsOptional()
   reps?: string[];
