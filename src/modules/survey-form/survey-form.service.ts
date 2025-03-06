@@ -1,12 +1,10 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { DealersService } from '../dealers/dealers.service';
 import { SurveysService } from '../surveys/surveys.service';
+import { CreateSurveyDto } from '../surveys/dto/create-survey.dto';
 
 @Injectable()
 export class SurveyFormService {
-  submitSurvey(dealerId: string, formData: any, files: Express.Multer.File[]) {
-    throw new Error('Method not implemented.');
-  }
   private readonly logger = new Logger(SurveyFormService.name);
 
   constructor(
@@ -26,5 +24,43 @@ export class SurveyFormService {
     }
   }
 
-  // ... rest of your service methods
+  async getDealerSurveys(dealerId: string) {
+    try {
+      const result = await this.surveysService.search({
+        dealer_id: dealerId,
+        limit: 100 // Adjust as needed
+      });
+      return result.data;
+    } catch (error) {
+      this.logger.error(`Error getting dealer surveys: ${error.message}`);
+      throw error;
+    }
+  }
+
+  async submitSurvey(dealerId: string, formData: CreateSurveyDto, files: Express.Multer.File[]) {
+    try {
+      // Verify dealer exists
+      await this.dealersService.findByDealerId(dealerId);
+
+      // Parse existing response data
+      let responseData = {};
+      try {
+        responseData = JSON.parse(formData.response_data);
+      } catch (e) {
+        this.logger.warn('Failed to parse response_data, using empty object');
+      }
+
+      // Create survey with files
+      const result = await this.surveysService.create({
+        ...formData,
+        response_data: JSON.stringify(responseData)
+      }, files);
+      
+      this.logger.debug('Survey submitted successfully:', result);
+      return result;
+    } catch (error) {
+      this.logger.error(`Error submitting survey: ${error.message}`);
+      throw error;
+    }
+  }
 }

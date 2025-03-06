@@ -216,4 +216,28 @@ export class DealersController {
       deleted_dealer: this.formatDealerResponse(dealer)
     };
   }
+
+  @Get(':id/upload-url')
+  async getUploadUrl(@Param('id') id: string) {
+    try {
+      // First verify the dealer exists
+      await this.dealersService.findOne(id);
+      
+      // Generate a unique filename
+      const timestamp = Date.now();
+      const randomString = Math.random().toString(36).substring(7);
+      const filename = `dealer-${id}-${timestamp}-${randomString}`;
+      
+      // Get upload URL from Google Drive service
+      const uploadData = await this.googleDriveService.getUploadUrl(filename, 'dealer-logos');
+      
+      return {
+        uploadUrl: uploadData.uploadUrl,
+        imageUrl: uploadData.webViewLink
+      };
+    } catch (error) {
+      this.logger.error('Failed to generate upload URL:', error);
+      throw error;
+    }
+  }
 } 

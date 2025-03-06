@@ -369,4 +369,47 @@ export class GoogleDriveService implements OnModuleInit {
   async onModuleInit() {
     await this.testConnection();
   }
+
+  async getUploadUrl(filename: string, folderName: string): Promise<{ uploadUrl: string; webViewLink: string }> {
+    try {
+      // Get or create the folder
+      const folderId = await this.findOrCreateFolder(folderName);
+
+      // Create a new file metadata
+      const fileMetadata = {
+        name: filename,
+        parents: [folderId]
+      };
+
+      // Create the file and get the upload URL
+      const response = await this.drive.files.create({
+        requestBody: fileMetadata,
+        fields: 'id, webViewLink'
+      });
+
+      // Make the file publicly accessible
+      await this.drive.permissions.create({
+        fileId: response.data.id,
+        requestBody: {
+          role: 'reader',
+          type: 'anyone'
+        }
+      });
+
+      // Generate the upload URL
+      const uploadUrl = `https://www.googleapis.com/upload/drive/v3/files/${response.data.id}?uploadType=media`;
+
+      return {
+        uploadUrl,
+        webViewLink: response.data.webViewLink
+      };
+    } catch (error) {
+      this.logger.error('Failed to generate upload URL:', error);
+      throw new UploadFailedException(
+        `Failed to generate upload URL: ${error.message}`,
+        'GoogleDrive',
+        error
+      );
+    }
+  }
 }

@@ -24,6 +24,10 @@ export class SurveysService {
     customerName: string,
     repName: string,
   ): Promise<string[]> {
+    if (!files || files.length === 0) {
+      return [];
+    }
+
     const folderName = `surveys/${customerName}-${repName}-${Date.now()}`;
     
     try {
@@ -53,32 +57,41 @@ export class SurveysService {
       return await Promise.all(uploadPromises);
     } catch (error) {
       this.logger.error(
-        `Failed to process and upload files to S3 for ${customerName}: ${error.message}`,
+        `Failed to process and upload files for ${customerName}: ${error.message}`,
         error.stack
       );
       throw error;
     }
   }
 
-  async create(createSurveyDto: CreateSurveyDto, files: Express.Multer.File[]) {
+  async create(createSurveyDto: CreateSurveyDto, files: Express.Multer.File[] = []) {
     const { response_data, ...surveyData } = createSurveyDto;
-    const processedData = { ...JSON.parse(response_data) };
+    let processedData: Record<string, any>;
 
-    // Upload to S3 with compression
-    const fileUrls = await this.uploadFilesToS3(
-      files,
-      createSurveyDto.customer_name,
-      createSurveyDto.rep_name
-    );
+    try {
+      processedData = JSON.parse(response_data);
+    } catch (error) {
+      this.logger.error('Failed to parse response_data:', error);
+      throw new Error('Invalid response_data format');
+    }
 
-    // Store URLs in processedData
-    files.forEach((file, index) => {
-      const questionId = file.fieldname.split('_')[0];
-      if (!processedData[questionId]) {
-        processedData[questionId] = [];
-      }
-      processedData[questionId].push(fileUrls[index]);
-    });
+    // Upload files if any
+    if (files.length > 0) {
+      const fileUrls = await this.uploadFilesToS3(
+        files,
+        createSurveyDto.customer_name,
+        createSurveyDto.rep_name
+      );
+
+      // Store URLs in processedData
+      files.forEach((file, index) => {
+        const questionId = file.fieldname.split('_')[0];
+        if (!processedData[questionId]) {
+          processedData[questionId] = [];
+        }
+        processedData[questionId].push(fileUrls[index]);
+      });
+    }
 
     // Create and save survey
     const survey = this.surveyRepository.create({
@@ -86,70 +99,77 @@ export class SurveysService {
       response_data: processedData,
     });
 
-    return await this.surveyRepository.save(survey);
+    try {
+      const savedSurvey = await this.surveyRepository.save(survey);
+      this.logger.debug('Survey saved successfully:', savedSurvey.id);
+      return savedSurvey;
+    } catch (error) {
+      this.logger.error('Failed to save survey:', error);
+      throw error;
+    }
   }
 
   async search(searchDto: SearchSurveyDto) {
     this.logger.debug(`Searching surveys with criteria: ${JSON.stringify(searchDto)}`);
+    
+    // First, let's check if the dealer exists and show its details
+    const dealer = await this.surveyRepository.manager.getRepository(Dealer)
+      .findOne({ where: { dealer_id: searchDto.dealer_id } });
+    this.logger.debug(`Found dealer: ${JSON.stringify(dealer)}`);
+    
+    // Let's check all surveys in the database
+    const allSurveys = await this.surveyRepository.find();
+    this.logger.debug(`All surveys in database: ${JSON.stringify(allSurveys.map(s => ({
+      id: s.id,
+      dealer_id: s.dealer_id,
+      customer_name: s.customer_name
+    })))}`);
     
     const query = this.surveyRepository.createQueryBuilder('survey');
     
     // Join with dealer to get dealer information
     query.leftJoinAndSelect('survey.dealer', 'dealer');
 
-    // Add debugging - Check what dealers exist
-    const allDealers = await this.surveyRepository.manager.getRepository(Dealer).find();
-    this.logger.debug(`Available dealers: ${JSON.stringify(allDealers.map(d => ({ id: d.id, dealer_id: d.dealer_id })))}`);
-    
-    // Add debugging - Check what surveys exist
-    const allSurveys = await this.surveyRepository.find({ select: ['id', 'dealer_id'] });
-    this.logger.debug(`Available surveys: ${JSON.stringify(allSurveys)}`);
-
-    // Search in customer name or address
-    if (searchDto.search && searchDto.search.trim()) {
-      const searchTerm = searchDto.search.trim();
-      query.andWhere(new Brackets(qb => {
-        qb.where('survey.customer_name ILIKE :search', { search: `%${searchTerm}%` })
-          .orWhere('survey.customer_address ILIKE :search', { search: `%${searchTerm}%` });
-      }));
-    }
-
     // Filter by dealer_id
     if (searchDto.dealer_id && searchDto.dealer_id.trim()) {
-      const dealerId = searchDto.dealer_id.trim();
-      
-      // Check if the dealer_id is in UUID format (for dealer.id)
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(dealerId);
-      
-      if (isUuid) {
-        // If it's a UUID, it's likely the dealer's primary key (id)
-        query.andWhere('dealer.id = :dealerId', { dealerId });
-      } else {
-        // Otherwise, it's the dealer_id string
-        query.andWhere('survey.dealer_id = :dealerId', { dealerId });
-      }
+      query.andWhere('survey.dealer_id = :dealerId', { 
+        dealerId: searchDto.dealer_id.trim() 
+      });
+      // Add debug log for this specific filter
+      this.logger.debug(`Filtering by dealer_id: ${searchDto.dealer_id.trim()}`);
     }
 
     // Filter by rep_name
     if (searchDto.rep_name && searchDto.rep_name.trim()) {
-      query.andWhere('survey.rep_name ILIKE :repName', { repName: `%${searchDto.rep_name.trim()}%` });
+      query.andWhere('survey.rep_name ILIKE :repName', { 
+        repName: `%${searchDto.rep_name.trim()}%` 
+      });
+      // Add debug log for this specific filter
+      this.logger.debug(`Filtering by rep_name: ${searchDto.rep_name.trim()}`);
     }
 
-    // Add pagination if needed
+    // Add pagination
     const page = searchDto.page || 1;
     const limit = searchDto.limit || 10;
     const skip = (page - 1) * limit;
     
     query.skip(skip).take(limit);
-    
-    // Order by created_at in descending order (newest first)
     query.orderBy('survey.created_at', 'DESC');
 
     try {
-      // Get results and count
+      // Log the raw SQL query and parameters
+      const rawQuery = query.getQueryAndParameters();
+      this.logger.debug('Raw SQL query:', rawQuery[0]);
+      this.logger.debug('Query parameters:', rawQuery[1]);
+
       const [surveys, total] = await query.getManyAndCount();
       
       this.logger.debug(`Found ${total} surveys matching criteria`);
+      this.logger.debug('Matching surveys:', JSON.stringify(surveys.map(s => ({
+        id: s.id,
+        dealer_id: s.dealer_id,
+        customer_name: s.customer_name
+      }))));
       
       return {
         data: surveys,
