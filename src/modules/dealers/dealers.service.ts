@@ -1,11 +1,10 @@
-import { Injectable, NotFoundException, Logger, InternalServerErrorException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger, InternalServerErrorException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Dealer } from './dealer.entity';
-import { GoogleDriveService } from '../google-drive/google-drive.service';
+import { S3Service } from '../s3/s3.service';
 import { CreateDealerDto } from './dto/create-dealer.dto';
 import { UpdateDealerDto } from './dto/update-dealer.dto';
-import { UploadFailedException } from '../../common/exceptions/upload.exception';
 
 @Injectable()
 export class DealersService {
@@ -14,137 +13,43 @@ export class DealersService {
   constructor(
     @InjectRepository(Dealer)
     private dealersRepository: Repository<Dealer>,
-    private googleDriveService: GoogleDriveService,
-  ) { }
+    private s3Service: S3Service,
+  ) {}
 
   async create(createDealerDto: CreateDealerDto, logoFile?: Express.Multer.File): Promise<Dealer> {
     try {
-      // First check if dealer_id already exists
-      const existingDealer = await this.dealersRepository.findOne({
-        where: { dealer_id: createDealerDto.dealer_id }
-      });
-
-      if (existingDealer) {
-        throw new BadRequestException(`Dealer with dealer_id "${createDealerDto.dealer_id}" already exists`);
-      }
-
       let logoUrl: string | undefined;
 
       if (logoFile) {
-        this.logger.debug('Processing logo file:', {
-          originalname: logoFile.originalname,
-          mimetype: logoFile.mimetype,
-          size: logoFile.size,
-          buffer: logoFile.buffer ? 'Buffer present' : 'No buffer'
-        });
-
-        try {
-          logoUrl = await this.googleDriveService.uploadFile(
-            logoFile,
-            'dealer-logos'
-          );
-
-          if (!logoUrl) {
-            throw new Error('Upload succeeded but no URL was returned');
-          }
-
-          this.logger.debug('Logo uploaded successfully:', logoUrl);
-        } catch (error) {
-          this.logger.error('Failed to upload logo:', error);
-          if (error instanceof UploadFailedException) {
-            throw new BadRequestException('Failed to upload logo: Invalid file format or corrupted image');
-          }
-          throw new InternalServerErrorException('Failed to upload logo to storage');
-        }
+        logoUrl = await this.s3Service.uploadDealerLogo(createDealerDto.dealer_id, logoFile);
       }
 
       const dealer = this.dealersRepository.create({
         ...createDealerDto,
-        logo: logoUrl || null,
-        reps: createDealerDto.reps || [""]
+        logo: logoUrl
       });
 
-      const savedDealer = await this.dealersRepository.save(dealer);
-      this.logger.debug('Dealer saved with data:', {
-        id: savedDealer.id,
-        dealer_id: savedDealer.dealer_id,
-        logo: savedDealer.logo
-      });
-
-      return savedDealer;
+      return await this.dealersRepository.save(dealer);
     } catch (error) {
-      this.logger.error(`Failed to create dealer: ${error.message}`, error.stack);
-      if (error instanceof BadRequestException || error instanceof InternalServerErrorException) {
-        throw error;
-      }
-      throw new InternalServerErrorException('Failed to create dealer');
+      this.logger.error(`Failed to create dealer: ${error.message}`);
+      throw error;
     }
   }
 
   async update(id: string, updateDealerDto: UpdateDealerDto, logoFile?: Express.Multer.File): Promise<Dealer> {
-    try {
-      const dealer = await this.dealersRepository.findOne({
-        where: { id },
-        select: ['id', 'dealer_id', 'name', 'logo', 'reps']
-      });
+    const dealer = await this.findOne(id);
 
-      if (!dealer) {
-        throw new NotFoundException(`Dealer with ID "${id}" not found`);
+    if (logoFile) {
+      // Delete old logo if exists
+      if (dealer.logo) {
+        await this.s3Service.deleteFile(dealer.logo);
       }
 
-      let logoUrl = dealer.logo;
-      if (logoFile) {
-        try {
-          // Delete existing logo if it exists
-          if (dealer.logo) {
-            const fileId = dealer.logo.split('=').pop();
-            try {
-              await this.googleDriveService.deleteFile(fileId);
-            } catch (error) {
-              this.logger.warn(`Failed to delete old logo: ${error.message}`);
-            }
-          }
-
-          // Upload new logo
-          logoUrl = await this.googleDriveService.uploadFile(
-            logoFile,
-            'dealer-logos'
-          );
-        } catch (error) {
-          this.logger.error('Failed to upload new logo:', error);
-          if (error instanceof UploadFailedException) {
-            throw new BadRequestException('Failed to upload logo: Invalid file format or corrupted image');
-          }
-          throw new InternalServerErrorException('Failed to upload logo to storage');
-        }
-      }
-
-      // Update basic fields if provided
-      if (updateDealerDto.name) dealer.name = updateDealerDto.name;
-      dealer.logo = logoUrl;
-
-      // Handle reps update
-      if (updateDealerDto.reps !== undefined) {
-        let processedReps: string[] = Array.isArray(updateDealerDto.reps)
-          ? updateDealerDto.reps
-          : [updateDealerDto.reps];
-
-        // Ensure we have at least an empty string if array is empty
-        if (processedReps.length === 0) {
-          processedReps = [""];
-        }
-
-        dealer.reps = processedReps;
-      }
-
-      return await this.dealersRepository.save(dealer);
-    } catch (error) {
-      this.logger.error(`Failed to update dealer: ${error.message}`, error.stack);
-      if (error instanceof NotFoundException || error instanceof BadRequestException || error instanceof InternalServerErrorException) {
-        throw error;
-      }
-      throw new InternalServerErrorException('Failed to update dealer');
+      dealer.logo = await this.s3Service.uploadDealerLogo(dealer.dealer_id, logoFile);
     }
+
+    Object.assign(dealer, updateDealerDto);
+    return await this.dealersRepository.save(dealer);
   }
 
   async delete(id: string): Promise<void> {

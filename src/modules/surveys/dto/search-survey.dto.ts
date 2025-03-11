@@ -2,6 +2,10 @@ import { IsString, IsOptional, IsNumber, IsPositive, Min, Max } from 'class-vali
 import { Type } from 'class-transformer';
 
 export class SearchSurveyDto {
+  @IsNumber()
+  @IsOptional()
+  id?: number;
+
   @IsString()
   @IsOptional()
   search?: string;

@@ -1,12 +1,10 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { ILike, Repository, Brackets } from 'typeorm';
+import { Repository } from 'typeorm';
 import { Survey } from './survey.entity';
+import { S3Service } from '../s3/s3.service';
 import { CreateSurveyDto } from './dto/create-survey.dto';
 import { SearchSurveyDto } from './dto/search-survey.dto';
-import { CompressionService } from '../compression/compression.service';
-import { GoogleDriveService } from '../google-drive/google-drive.service';
-import { Dealer } from '../dealers/dealer.entity';
 
 @Injectable()
 export class SurveysService {
@@ -15,187 +13,85 @@ export class SurveysService {
   constructor(
     @InjectRepository(Survey)
     private surveyRepository: Repository<Survey>,
-    private compressionService: CompressionService,
-    private googleDriveService: GoogleDriveService,
+    private s3Service: S3Service,
   ) {}
 
-  private async uploadFilesToS3(
-    files: Express.Multer.File[],
-    customerName: string,
-    repName: string,
-  ): Promise<string[]> {
-    if (!files || files.length === 0) {
-      return [];
-    }
-
-    const folderName = `surveys/${customerName}-${repName}-${Date.now()}`;
-    
-    try {
-      // Compress all images
-      const compressedFiles = await this.compressionService.compressImageBatch(
-        files,
-        {
-          maxWidth: 2048,
-          maxHeight: 2048,
-          quality: 80,
-          format: 'jpeg',
-        }
-      );
-
-      // Upload compressed files
-      const uploadPromises = compressedFiles.map((compressedFile, index) => {
-        // Create a modified file object with the compressed buffer
-        const modifiedFile: Express.Multer.File = {
-          ...files[index],
-          buffer: compressedFile.buffer,
-          originalname: compressedFile.originalname
-        };
-        
-        return this.googleDriveService.uploadFile(modifiedFile, folderName);
-      });
-
-      return await Promise.all(uploadPromises);
-    } catch (error) {
-      this.logger.error(
-        `Failed to process and upload files for ${customerName}: ${error.message}`,
-        error.stack
-      );
-      throw error;
-    }
-  }
-
   async create(createSurveyDto: CreateSurveyDto, files: Express.Multer.File[] = []) {
-    const { response_data, ...surveyData } = createSurveyDto;
-    let processedData: Record<string, any>;
-
     try {
-      processedData = JSON.parse(response_data);
-    } catch (error) {
-      this.logger.error('Failed to parse response_data:', error);
-      throw new Error('Invalid response_data format');
-    }
-
-    // Upload files if any
-    if (files.length > 0) {
-      const fileUrls = await this.uploadFilesToS3(
-        files,
-        createSurveyDto.customer_name,
-        createSurveyDto.rep_name
-      );
-
-      // Store URLs in processedData
-      files.forEach((file, index) => {
-        const questionId = file.fieldname.split('_')[0];
-        if (!processedData[questionId]) {
-          processedData[questionId] = [];
-        }
-        processedData[questionId].push(fileUrls[index]);
-      });
-    }
-
-    // Create and save survey
-    const survey = this.surveyRepository.create({
-      ...surveyData,
-      response_data: processedData,
-    });
-
-    try {
+      const surveyData = {
+        ...createSurveyDto,
+        response_data: JSON.parse(createSurveyDto.response_data)
+      };
+      const survey = this.surveyRepository.create(surveyData);
       const savedSurvey = await this.surveyRepository.save(survey);
-      this.logger.debug('Survey saved successfully:', savedSurvey.id);
+
+      if (files.length > 0) {
+        const uploadPromises = files.map(file => 
+          this.s3Service.uploadSurveyImage(savedSurvey.id.toString(), file)
+        );
+
+        const fileUrls = await Promise.all(uploadPromises);
+
+        // Update response_data with file URLs
+        const responseData = savedSurvey.response_data || {};
+        files.forEach((file, index) => {
+          const questionId = file.fieldname.split('_')[0];
+          if (!responseData[questionId]) {
+            responseData[questionId] = [];
+          }
+          responseData[questionId].push(fileUrls[index]);
+        });
+
+        savedSurvey.response_data = responseData;
+        await this.surveyRepository.save(savedSurvey);
+      }
+
       return savedSurvey;
     } catch (error) {
-      this.logger.error('Failed to save survey:', error);
+      this.logger.error(`Failed to create survey: ${error.message}`);
       throw error;
     }
   }
 
   async search(searchDto: SearchSurveyDto) {
-    this.logger.debug(`Searching surveys with criteria: ${JSON.stringify(searchDto)}`);
-    
-    // First, let's check if the dealer exists and show its details
-    const dealer = await this.surveyRepository.manager.getRepository(Dealer)
-      .findOne({ where: { dealer_id: searchDto.dealer_id } });
-    this.logger.debug(`Found dealer: ${JSON.stringify(dealer)}`);
-    
-    // Let's check all surveys in the database
-    const allSurveys = await this.surveyRepository.find();
-    this.logger.debug(`All surveys in database: ${JSON.stringify(allSurveys.map(s => ({
-      id: s.id,
-      dealer_id: s.dealer_id,
-      customer_name: s.customer_name
-    })))}`);
-    
     const query = this.surveyRepository.createQueryBuilder('survey');
-    
-    // Join with dealer to get dealer information
-    query.leftJoinAndSelect('survey.dealer', 'dealer');
 
-    // Filter by dealer_id
-    if (searchDto.dealer_id && searchDto.dealer_id.trim()) {
-      query.andWhere('survey.dealer_id = :dealerId', { 
-        dealerId: searchDto.dealer_id.trim() 
-      });
-      // Add debug log for this specific filter
-      this.logger.debug(`Filtering by dealer_id: ${searchDto.dealer_id.trim()}`);
+    if (searchDto.id) {
+      query.where('survey.id = :id', { id: searchDto.id });
     }
 
-    // Filter by rep_name
-    if (searchDto.rep_name && searchDto.rep_name.trim()) {
-      query.andWhere('survey.rep_name ILIKE :repName', { 
-        repName: `%${searchDto.rep_name.trim()}%` 
-      });
-      // Add debug log for this specific filter
-      this.logger.debug(`Filtering by rep_name: ${searchDto.rep_name.trim()}`);
+    if (searchDto.search) {
+      query.where(
+        '(survey.customer_name ILIKE :search OR survey.customer_address ILIKE :search)',
+        { search: `%${searchDto.search}%` }
+      );
     }
 
-    // Add pagination
+    if (searchDto.dealer_id) {
+      query.andWhere('survey.dealer_id = :dealer_id', { dealer_id: searchDto.dealer_id });
+    }
+
+    if (searchDto.rep_name) {
+      query.andWhere('survey.rep_name ILIKE :rep_name', { rep_name: `%${searchDto.rep_name}%` });
+    }
+
     const page = searchDto.page || 1;
     const limit = searchDto.limit || 10;
     const skip = (page - 1) * limit;
-    
+
     query.skip(skip).take(limit);
     query.orderBy('survey.created_at', 'DESC');
 
-    try {
-      // Log the raw SQL query and parameters
-      const rawQuery = query.getQueryAndParameters();
-      this.logger.debug('Raw SQL query:', rawQuery[0]);
-      this.logger.debug('Query parameters:', rawQuery[1]);
+    const [data, total] = await query.getManyAndCount();
 
-      const [surveys, total] = await query.getManyAndCount();
-      
-      this.logger.debug(`Found ${total} surveys matching criteria`);
-      this.logger.debug('Matching surveys:', JSON.stringify(surveys.map(s => ({
-        id: s.id,
-        dealer_id: s.dealer_id,
-        customer_name: s.customer_name
-      }))));
-      
-      return {
-        data: surveys,
-        meta: {
-          total,
-          page,
-          limit,
-          totalPages: Math.ceil(total / limit)
-        }
-      };
-    } catch (error) {
-      this.logger.error(`Error searching surveys: ${error.message}`, error.stack);
-      throw error;
-    }
-  }
-
-  async findOne(id: number) {
-    const survey = await this.surveyRepository.findOne({
-      where: { id },
-      relations: ['dealer'],
-    });
-
-    if (!survey) {
-      throw new NotFoundException(`Survey with ID ${id} not found`);
-    }
-
-    return survey;
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit)
+      }
+    };
   }
 }

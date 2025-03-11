@@ -6,12 +6,14 @@ import { Dealer } from '../dealers/dealer.entity';
 import { DealersService } from '../dealers/dealers.service';
 import { GoogleDriveModule } from '../google-drive/google-drive.module';
 import { SurveysModule } from '../surveys/surveys.module';
+import { S3Module } from '../s3/s3.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Dealer]),
     GoogleDriveModule,
     SurveysModule,
+    S3Module,
   ],
   controllers: [SurveyFormController],
   providers: [SurveyFormService, DealersService],

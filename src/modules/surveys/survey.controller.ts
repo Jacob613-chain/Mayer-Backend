@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Query, UseInterceptors, UploadedFiles, Redirect } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, UseInterceptors, UploadedFiles, Redirect, NotFoundException } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { SurveysService } from './surveys.service';
 import { CreateSurveyDto } from './dto/create-survey.dto';
@@ -35,10 +35,14 @@ export class SurveysController {
 
   @Get(':id')
   async findOne(@Param('id') id: string) {
-    const survey = await this.surveysService.findOne(+id);
+    const result = await this.surveysService.search({ id: +id });
+    if (result.data.length === 0) {
+      throw new NotFoundException(`Survey with ID "${id}" not found`);
+    }
+    const survey = result.data[0];
     return {
       ...survey,
-      viewUrl: `/r/${survey.dealer_id}` // Add the view URL for frontend redirection
+      viewUrl: `/r/${survey.dealer_id}`
     };
   }
 } 
