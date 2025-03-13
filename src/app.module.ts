@@ -3,7 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { DealersModule } from './modules/dealers/dealers.module';
 import { SurveysModule } from './modules/surveys/surveys.module';
-import { GoogleDriveModule } from './modules/google-drive/google-drive.module';
+import { S3Module } from './modules/s3/s3.module';
 import { SurveyFormModule } from './modules/survey-form/survey-form.module';
 import { AdminModule } from './modules/admin/admin.module';
 
@@ -25,10 +25,10 @@ import { AdminModule } from './modules/admin/admin.module';
       inject: [ConfigService],
     }),
     DealersModule,
+    S3Module,
     SurveysModule,
-    GoogleDriveModule,
     SurveyFormModule,
-    AdminModule, // Make sure this is here
+    AdminModule,
   ],
 })
 export class AppModule {}

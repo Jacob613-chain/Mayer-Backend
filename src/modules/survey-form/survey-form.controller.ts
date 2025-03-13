@@ -34,7 +34,7 @@ export class SurveyFormController {
 
       return {
         title: dealer.name,
-        logo: dealer.logo,
+        logo: dealer.logo || null, // Ensure logo is explicitly null if not present
         dealerId: dealer.dealer_id,
         dealerName: dealer.name,
         reps: dealer.reps || ['']
@@ -56,26 +56,41 @@ export class SurveyFormController {
         throw new BadRequestException('dealer_id is required');
       }
 
-      // Process the response data
+      // Initialize response data object
       const responseData = {};
-      const photoFields = [
-        'roof_condition_photos',
-        'roof_tilt_photos',
-        'roof_all_sides_photos',
-        // ... other photo fields
-      ];
 
-      // Process uploaded URLs for each photo field
-      photoFields.forEach(field => {
-        const urlsKey = `${field}_urls`;
-        if (formData[urlsKey]) {
-          try {
-            responseData[field] = JSON.parse(formData[urlsKey]);
-          } catch (e) {
-            this.logger.warn(`Failed to parse ${urlsKey}: ${e.message}`);
+      // Process all form fields
+      for (const [key, value] of Object.entries(formData)) {
+        if (key !== 'dealer_id' && key !== 'rep_name' && 
+            key !== 'customer_name' && key !== 'customer_address') {
+          // Handle arrays (like radio buttons and selects)
+          if (key.endsWith('[]')) {
+            const cleanKey = key.slice(0, -2);
+            responseData[cleanKey] = Array.isArray(value) ? value : [value];
+          } else {
+            responseData[key] = value;
           }
         }
-      });
+      }
+
+      // Process uploaded files
+      if (files.length > 0) {
+        const uploadPromises = files.map(file => {
+          const questionId = file.fieldname.split('_')[0];
+          return this.surveyFormService.uploadFile(file, dealerId, questionId);
+        });
+
+        const uploadedUrls = await Promise.all(uploadPromises);
+
+        // Group URLs by question ID
+        uploadedUrls.forEach((url, index) => {
+          const questionId = files[index].fieldname.split('_')[0];
+          if (!responseData[questionId]) {
+            responseData[questionId] = [];
+          }
+          responseData[questionId].push(url);
+        });
+      }
 
       // Create survey DTO
       const createSurveyDto: CreateSurveyDto = {
@@ -109,10 +124,20 @@ export class SurveyFormController {
       const dealer = await this.surveyFormService.getDealerInfo(dealerId);
       const surveys = await this.surveyFormService.getDealerSurveys(dealerId);
 
+      // Format surveys for display
+      const formattedSurveys = surveys.map(survey => ({
+        id: survey.id,
+        customer_name: survey.customer_name,
+        customer_address: survey.customer_address,
+        rep_name: survey.rep_name,
+        created_at: survey.created_at,
+        responses: survey.response_data
+      }));
+
       return {
         title: `${dealer.name} - Survey Responses`,
         dealer: dealer,
-        surveys: surveys
+        surveys: formattedSurveys
       };
     } catch (error) {
       throw new NotFoundException(`Dealer with ID "${dealerId}" not found`);

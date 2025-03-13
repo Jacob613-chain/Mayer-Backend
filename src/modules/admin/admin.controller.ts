@@ -1,5 +1,6 @@
 import { Controller, Get, Render } from '@nestjs/common';
 import { DealersService } from '../dealers/dealers.service';
+import { SearchDealerDto } from '../dealers/dto/search-dealer.dto';
 
 @Controller('admin')
 export class AdminController {
@@ -8,7 +9,11 @@ export class AdminController {
   @Get()
   @Render('admin')
   async getAdminPage() {
-    const dealers = await this.dealersService.findAll();
+    const searchParams: SearchDealerDto = {
+      limit: 1000, // Get all dealers
+      page: 1
+    };
+    const { data: dealers } = await this.dealersService.search(searchParams);
     return { 
       dealers: dealers.map(dealer => ({
         id: dealer.id,

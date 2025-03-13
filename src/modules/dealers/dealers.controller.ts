@@ -6,6 +6,7 @@ import {
   Delete,
   Param,
   Body,
+  Query,
   UseInterceptors,
   UploadedFile,
   NotFoundException,
@@ -17,9 +18,10 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { DealersService } from './dealers.service';
 import { CreateDealerDto } from './dto/create-dealer.dto';
 import { UpdateDealerDto } from './dto/update-dealer.dto';
+import { SearchDealerDto } from './dto/search-dealer.dto';
 import { GoogleDriveService } from '../google-drive/google-drive.service';
 import { CompressionService } from '../compression/compression.service';
-import { UploadFailedException } from '../../common/exceptions/upload.exception';
+import { S3Service } from '../s3/s3.service';
 
 @Controller('dealers')
 export class DealersController {
@@ -29,6 +31,7 @@ export class DealersController {
     private readonly dealersService: DealersService,
     private readonly googleDriveService: GoogleDriveService,
     private readonly compressionService: CompressionService,
+    private readonly s3Service: S3Service,
   ) {}
 
   private formatDealerResponse(dealer: any) {
@@ -36,7 +39,7 @@ export class DealersController {
       system_id: dealer.id,
       dealer_id: dealer.dealer_id,
       name: dealer.name,
-      logo: dealer.logo,
+      logo: dealer.logo || null, // No need to transform as we're storing full URLs now
       reps: dealer.reps
     };
   }
@@ -106,17 +109,11 @@ export class DealersController {
         createDealerDto.reps = [''];
       }
 
-      // Pass the logo file directly to the service
       const dealer = await this.dealersService.create(createDealerDto, logo);
-      
-      this.logger.debug('Dealer created successfully:', dealer);
       return this.formatDealerResponse(dealer);
     } catch (error) {
       this.logger.error('Failed to create dealer:', error);
-      if (error instanceof BadRequestException || error instanceof InternalServerErrorException) {
-        throw error;
-      }
-      throw new InternalServerErrorException('Failed to create dealer');
+      throw error;
     }
   }
 
@@ -143,52 +140,7 @@ export class DealersController {
     @UploadedFile() logo?: Express.Multer.File,
   ) {
     try {
-      const existingDealer = await this.dealersService.findOne(id);
-      
-      let logoUrl = existingDealer.logo;
-      if (logo) {
-        // Delete existing logo if it exists
-        if (existingDealer.logo) {
-          const fileId = existingDealer.logo.split('=').pop();
-          try {
-            await this.googleDriveService.deleteFile(fileId);
-          } catch (error) {
-            this.logger.warn(`Failed to delete old logo: ${error.message}`);
-          }
-        }
-
-        try {
-          // Compress the image before uploading
-          const compressedBuffer = await this.compressionService.compressImage(logo, {
-            maxWidth: 1024,
-            maxHeight: 1024,
-            quality: 80,
-            format: 'jpeg'
-          });
-
-          // Create a new file object with the compressed buffer
-          const compressedFile: Express.Multer.File = {
-            ...logo,
-            buffer: compressedBuffer,
-            originalname: `${logo.originalname.split('.')[0]}.jpeg`
-          };
-
-          logoUrl = await this.googleDriveService.uploadFile(
-            compressedFile,
-            'dealer-logos'
-          );
-        } catch (error) {
-          this.logger.error('Failed to process or upload new logo:', error);
-          throw new BadRequestException('Failed to process image. Please ensure it is a valid image file.');
-        }
-      }
-
-      const dealerData = {
-        ...updateDealerDto,
-        logo: logoUrl
-      };
-
-      const dealer = await this.dealersService.update(id, dealerData);
+      const dealer = await this.dealersService.update(id, updateDealerDto, logo);
       return this.formatDealerResponse(dealer);
     } catch (error) {
       this.logger.error('Failed to update dealer:', error);
@@ -200,13 +152,12 @@ export class DealersController {
   async remove(@Param('id') id: string) {
     const dealer = await this.dealersService.findOne(id);
     
-    // Delete logo from Google Drive if it exists
+    // Delete logo from S3 if it exists
     if (dealer.logo) {
-      const fileId = dealer.logo.split('=').pop();
       try {
-        await this.googleDriveService.deleteFile(fileId);
+        await this.s3Service.deleteFile(dealer.logo);
       } catch (error) {
-        this.logger.warn(`Failed to delete logo from Google Drive: ${error.message}`);
+        this.logger.warn(`Failed to delete logo from S3: ${error.message}`);
       }
     }
 
@@ -237,6 +188,20 @@ export class DealersController {
       };
     } catch (error) {
       this.logger.error('Failed to generate upload URL:', error);
+      throw error;
+    }
+  }
+
+  @Get()
+  async search(@Query() searchDto: SearchDealerDto) {
+    try {
+      const result = await this.dealersService.search(searchDto);
+      return {
+        data: result.data.map(dealer => this.formatDealerResponse(dealer)),
+        meta: result.meta
+      };
+    } catch (error) {
+      this.logger.error('Failed to search dealers:', error);
       throw error;
     }
   }

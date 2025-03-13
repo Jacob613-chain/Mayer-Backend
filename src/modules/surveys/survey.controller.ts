@@ -14,18 +14,17 @@ export class SurveysController {
     return this.surveysService.create(createSurveyDto, files);
   }
 
-  @Get()
+  @Get('search')
   async search(@Query() searchDto: SearchSurveyDto) {
     const result = await this.surveysService.search(searchDto);
     
-    // Transform the data to match the frontend expectations
     return {
       results: result.data.map(survey => ({
         id: survey.id,
+        dealer_id: survey.dealer_id,
         customer_name: survey.customer_name,
         customer_address: survey.customer_address,
         rep_name: survey.rep_name,
-        dealer_id: survey.dealer_id,
         created_at: survey.created_at,
         // Add any other fields needed by the frontend
       })),

@@ -1,6 +1,7 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
-import { DealersService } from '../dealers/dealers.service';
+import { Injectable, Logger } from '@nestjs/common';
+import { S3Service } from '../s3/s3.service';
 import { SurveysService } from '../surveys/surveys.service';
+import { DealersService } from '../dealers/dealers.service';
 import { CreateSurveyDto } from '../surveys/dto/create-survey.dto';
 
 @Injectable()
@@ -8,18 +9,39 @@ export class SurveyFormService {
   private readonly logger = new Logger(SurveyFormService.name);
 
   constructor(
+    private readonly s3Service: S3Service,
+    private readonly surveysService: SurveysService,
     private readonly dealersService: DealersService,
-    private readonly surveysService: SurveysService
   ) {}
 
-  async getDealerInfo(dealerId: string) {
+  async uploadFile(
+    file: Express.Multer.File,
+    dealerId: string,
+    questionId: string
+  ): Promise<string> {
     try {
-      this.logger.debug(`Searching for dealer with dealer_id: ${dealerId}`);
-      const dealer = await this.dealersService.findByDealerId(dealerId);
-      this.logger.debug('Found dealer:', dealer);
-      return dealer;
+      const path = `surveys/${dealerId}/${questionId}`;
+      return await this.s3Service.uploadFile(file, path);
     } catch (error) {
-      this.logger.error('Error finding dealer:', error);
+      this.logger.error(`Failed to upload file: ${error.message}`);
+      throw error;
+    }
+  }
+
+  async submitSurvey(
+    dealerId: string,
+    formData: CreateSurveyDto,
+    files: Express.Multer.File[]
+  ) {
+    try {
+      // Verify dealer exists
+      await this.dealersService.findByDealerId(dealerId);
+
+      // Create survey with response data
+      const result = await this.surveysService.create(formData, files);
+      return result;
+    } catch (error) {
+      this.logger.error(`Failed to submit survey: ${error.message}`);
       throw error;
     }
   }
@@ -28,7 +50,7 @@ export class SurveyFormService {
     try {
       const result = await this.surveysService.search({
         dealer_id: dealerId,
-        limit: 100 // Adjust as needed
+        limit: 100
       });
       return result.data;
     } catch (error) {
@@ -37,29 +59,11 @@ export class SurveyFormService {
     }
   }
 
-  async submitSurvey(dealerId: string, formData: CreateSurveyDto, files: Express.Multer.File[]) {
+  async getDealerInfo(dealerId: string) {
     try {
-      // Verify dealer exists
-      await this.dealersService.findByDealerId(dealerId);
-
-      // Parse existing response data
-      let responseData = {};
-      try {
-        responseData = JSON.parse(formData.response_data);
-      } catch (e) {
-        this.logger.warn('Failed to parse response_data, using empty object');
-      }
-
-      // Create survey with files
-      const result = await this.surveysService.create({
-        ...formData,
-        response_data: JSON.stringify(responseData)
-      }, files);
-      
-      this.logger.debug('Survey submitted successfully:', result);
-      return result;
+      return await this.dealersService.findByDealerId(dealerId);
     } catch (error) {
-      this.logger.error(`Error submitting survey: ${error.message}`);
+      this.logger.error(`Failed to get dealer info: ${error.message}`);
       throw error;
     }
   }

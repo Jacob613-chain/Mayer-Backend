@@ -1,9 +1,10 @@
-import { IsString, IsOptional, IsNumber, IsPositive, Min, Max } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsPositive, Min, Max, IsBoolean } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class SearchSurveyDto {
   @IsNumber()
   @IsOptional()
+  @Type(() => Number)
   id?: number;
 
   @IsString()
@@ -17,6 +18,11 @@ export class SearchSurveyDto {
   @IsString()
   @IsOptional()
   rep_name?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  @Type(() => Boolean)
+  include_dealer_info?: boolean;
   
   @IsOptional()
   @Type(() => Number)
@@ -29,6 +35,5 @@ export class SearchSurveyDto {
   @Type(() => Number)
   @IsNumber()
   @IsPositive()
-  @Max(100)
   limit?: number = 10;
 }

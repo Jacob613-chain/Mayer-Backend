@@ -27,7 +27,10 @@ export class SurveysService {
 
       if (files.length > 0) {
         const uploadPromises = files.map(file => 
-          this.s3Service.uploadSurveyImage(savedSurvey.id.toString(), file)
+          this.s3Service.uploadFile(file, `surveys/${savedSurvey.id}`).catch((error: Error) => {
+            this.logger.error(`Failed to upload survey image: ${error.message}`);
+            throw error;
+          })
         );
 
         const fileUrls = await Promise.all(uploadPromises);
@@ -56,23 +59,48 @@ export class SurveysService {
   async search(searchDto: SearchSurveyDto) {
     const query = this.surveyRepository.createQueryBuilder('survey');
 
+    // Start with a base condition
+    let hasWhereCondition = false;
+
     if (searchDto.id) {
       query.where('survey.id = :id', { id: searchDto.id });
+      hasWhereCondition = true;
     }
 
     if (searchDto.search) {
-      query.where(
-        '(survey.customer_name ILIKE :search OR survey.customer_address ILIKE :search)',
-        { search: `%${searchDto.search}%` }
-      );
+      if (hasWhereCondition) {
+        query.andWhere(
+          '(survey.customer_name ILIKE :search OR survey.customer_address ILIKE :search)',
+          { search: `%${searchDto.search}%` }
+        );
+      } else {
+        query.where(
+          '(survey.customer_name ILIKE :search OR survey.customer_address ILIKE :search)',
+          { search: `%${searchDto.search}%` }
+        );
+        hasWhereCondition = true;
+      }
     }
 
     if (searchDto.dealer_id) {
-      query.andWhere('survey.dealer_id = :dealer_id', { dealer_id: searchDto.dealer_id });
+      if (hasWhereCondition) {
+        query.andWhere('survey.dealer_id = :dealer_id', { dealer_id: searchDto.dealer_id });
+      } else {
+        query.where('survey.dealer_id = :dealer_id', { dealer_id: searchDto.dealer_id });
+        hasWhereCondition = true;
+      }
     }
 
     if (searchDto.rep_name) {
-      query.andWhere('survey.rep_name ILIKE :rep_name', { rep_name: `%${searchDto.rep_name}%` });
+      if (hasWhereCondition) {
+        query.andWhere('survey.rep_name ILIKE :rep_name', { rep_name: `%${searchDto.rep_name}%` });
+      } else {
+        query.where('survey.rep_name ILIKE :rep_name', { rep_name: `%${searchDto.rep_name}%` });
+      }
+    }
+
+    if (searchDto.include_dealer_info) {
+      query.leftJoinAndSelect('survey.dealer', 'dealer');
     }
 
     const page = searchDto.page || 1;
