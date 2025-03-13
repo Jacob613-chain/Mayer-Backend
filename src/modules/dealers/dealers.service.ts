@@ -6,6 +6,7 @@ import { S3Service } from '../s3/s3.service';
 import { CreateDealerDto } from './dto/create-dealer.dto';
 import { UpdateDealerDto } from './dto/update-dealer.dto';
 import { SearchDealerDto } from './dto/search-dealer.dto';
+import * as crypto from 'crypto';
 
 @Injectable()
 export class DealersService {
@@ -22,8 +23,7 @@ export class DealersService {
       let logoUrl: string | undefined;
 
       if (logoFile) {
-        const path = `dealer-logos/${createDealerDto.dealer_id}`;
-        logoUrl = await this.s3Service.uploadFile(logoFile, path);
+        logoUrl = await this.s3Service.uploadDealerLogo(createDealerDto.dealer_id, logoFile);
       }
 
       const dealer = this.dealersRepository.create({
@@ -39,30 +39,19 @@ export class DealersService {
   }
 
   async update(id: string, updateDealerDto: UpdateDealerDto, logoFile?: Express.Multer.File): Promise<Dealer> {
-    try {
-      const dealer = await this.findOne(id);
+    const dealer = await this.findOne(id);
 
-      if (logoFile) {
-        // Delete old logo if exists
-        if (dealer.logo) {
-          try {
-            await this.s3Service.deleteFile(dealer.logo);
-          } catch (error) {
-            this.logger.warn(`Failed to delete old logo: ${error.message}`);
-          }
-        }
-
-        // Upload new logo
-        const path = `dealer-logos/${dealer.dealer_id}`;
-        dealer.logo = await this.s3Service.uploadFile(logoFile, path);
+    if (logoFile) {
+      // Delete old logo if exists
+      if (dealer.logo) {
+        await this.s3Service.deleteFile(dealer.logo);
       }
 
-      Object.assign(dealer, updateDealerDto);
-      return await this.dealersRepository.save(dealer);
-    } catch (error) {
-      this.logger.error(`Failed to update dealer: ${error.message}`);
-      throw error;
+      dealer.logo = await this.s3Service.uploadDealerLogo(dealer.dealer_id, logoFile);
     }
+
+    Object.assign(dealer, updateDealerDto);
+    return await this.dealersRepository.save(dealer);
   }
 
   async delete(id: string): Promise<void> {

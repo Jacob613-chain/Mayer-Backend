@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { S3 } from 'aws-sdk';
 import { v4 as uuidv4 } from 'uuid';
 import { Readable } from 'stream';
+import * as crypto from 'crypto';
 
 @Injectable()
 export class S3Service {
@@ -92,6 +93,19 @@ export class S3Service {
       return stream;
     } catch (error) {
       this.logger.error(`Failed to get file stream for ${key}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  async uploadDealerLogo(dealerId: string, file: Express.Multer.File): Promise<string> {
+    try {
+      const fileExtension = file.originalname.split('.').pop();
+      const fileName = `${dealerId}/${crypto.randomUUID()}.${fileExtension}`;
+      const path = `dealer-logos/${fileName}`;
+      
+      return await this.uploadFile(file, path);
+    } catch (error) {
+      this.logger.error(`Failed to upload dealer logo: ${error.message}`);
       throw error;
     }
   }

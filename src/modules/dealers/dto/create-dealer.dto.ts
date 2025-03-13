@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsArray } from 'class-validator';
+import { IsString, IsNotEmpty, IsArray, IsOptional } from 'class-validator';
 
 export class CreateDealerDto {
   @IsString()
@@ -8,6 +8,10 @@ export class CreateDealerDto {
   @IsString()
   @IsNotEmpty()
   name: string;
+
+  @IsString()
+  @IsOptional()
+  logo?: string;
 
   @IsArray()
   @IsNotEmpty()

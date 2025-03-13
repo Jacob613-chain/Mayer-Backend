@@ -35,11 +35,18 @@ export class DealersController {
   ) {}
 
   private formatDealerResponse(dealer: any) {
+    const baseUrl = 'https://s3.us-central-1.wasabisys.com/sitesurvey-images.mayersolar.com';
+    let logoUrl = null;
+    
+    if (dealer.logo) {
+      logoUrl = dealer.logo.startsWith('http') ? dealer.logo : `${baseUrl}/${dealer.logo}`;
+    }
+
     return {
       system_id: dealer.id,
       dealer_id: dealer.dealer_id,
       name: dealer.name,
-      logo: dealer.logo || null, // No need to transform as we're storing full URLs now
+      logo: logoUrl,
       reps: dealer.reps
     };
   }
@@ -109,11 +116,17 @@ export class DealersController {
         createDealerDto.reps = [''];
       }
 
+      // Pass the logo file directly to the service
       const dealer = await this.dealersService.create(createDealerDto, logo);
+      
+      this.logger.debug('Dealer created successfully:', dealer);
       return this.formatDealerResponse(dealer);
     } catch (error) {
       this.logger.error('Failed to create dealer:', error);
-      throw error;
+      if (error instanceof BadRequestException || error instanceof InternalServerErrorException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to create dealer');
     }
   }
 
