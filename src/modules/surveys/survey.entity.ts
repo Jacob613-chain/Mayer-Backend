@@ -21,6 +21,9 @@ export class Survey {
   @Column('jsonb')
   response_data: Record<string, any>;
 
+  @Column('jsonb', { nullable: true })
+  form_payload: Record<string, any>;  // New column for storing the complete form payload
+
   @CreateDateColumn()
   created_at: Date;
 

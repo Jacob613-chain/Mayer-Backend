@@ -45,7 +45,7 @@ export class SurveyFormController {
   }
 
   @Post('surveys')
-  @UseInterceptors(FilesInterceptor('photos', 20)) // Allow up to 20 photos
+  @UseInterceptors(FilesInterceptor('photos', 20))
   async submitSurvey(
     @Body() formData: any,
     @UploadedFiles() files: Express.Multer.File[]
@@ -56,51 +56,42 @@ export class SurveyFormController {
         throw new BadRequestException('dealer_id is required');
       }
 
-      // Initialize response data object
-      const responseData = {};
-
-      // Process all form fields
-      for (const [key, value] of Object.entries(formData)) {
-        if (key !== 'dealer_id' && key !== 'rep_name' && 
-            key !== 'customer_name' && key !== 'customer_address') {
-          // Handle arrays (like radio buttons and selects)
-          if (key.endsWith('[]')) {
-            const cleanKey = key.slice(0, -2);
-            responseData[cleanKey] = Array.isArray(value) ? value : [value];
-          } else {
-            responseData[key] = value;
-          }
-        }
-      }
-
-      // Process uploaded files
-      if (files.length > 0) {
-        const uploadPromises = files.map(file => {
-          const questionId = file.fieldname.split('_')[0];
-          return this.surveyFormService.uploadFile(file, dealerId, questionId);
-        });
-
-        const uploadedUrls = await Promise.all(uploadPromises);
-
-        // Group URLs by question ID
-        uploadedUrls.forEach((url, index) => {
-          const questionId = files[index].fieldname.split('_')[0];
-          if (!responseData[questionId]) {
-            responseData[questionId] = [];
-          }
-          responseData[questionId].push(url);
-        });
-      }
-
-      // Create survey DTO
+      // Create survey DTO with all fields from formData
       const createSurveyDto: CreateSurveyDto = {
         dealer_id: dealerId,
         rep_name: formData.rep_name,
         customer_name: formData.customer_name,
         customer_address: formData.customer_address,
-        response_data: JSON.stringify(responseData)
+        description: formData.description,
+        has_attic: formData.has_attic,
+        roof_type: formData.roof_type,
+        stored_items_in_attic: formData.stored_items_in_attic,
+        panel_location: formData.panel_location,
+        main_panel_rating: formData.main_panel_rating,
+        bus_bar_rating: formData.bus_bar_rating,
+        extra_breaker_space: formData.extra_breaker_space,
+        breaker_spots_count: formData.breaker_spots_count,
+        has_sub_panel: formData.has_sub_panel,
+        sub_panel_rating: formData.sub_panel_rating,
+        sub_panel_breaker_space: formData.sub_panel_breaker_space,
+        sub_panel_bus_bar_rating: formData.sub_panel_bus_bar_rating,
+        panel_brand: formData.panel_brand,
+        panel_model: formData.panel_model,
+        panel_year: formData.panel_year,
+        panel_notes: formData.panel_notes,
+        utility_meter_on_wall: formData.utility_meter_on_wall,
+        has_generators: formData.has_generators,
+        has_existing_system: formData.has_existing_system,
+        existing_system_type: formData.existing_system_type,
+        existing_inverter_count: formData.existing_inverter_count,
+        existing_panel_count: formData.existing_panel_count,
+        existing_battery_count: formData.existing_battery_count,
+        has_hoa: formData.has_hoa,
+        has_wifi: formData.has_wifi,
+        additional_notes: formData.additional_notes
       };
 
+      // Pass the raw files to the service
       const result = await this.surveyFormService.submitSurvey(
         dealerId,
         createSurveyDto,
