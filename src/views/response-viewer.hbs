@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{title}} - Survey Responses</title>
+    <link rel="stylesheet" href="/styles/main.css">
+    <style>
+        .header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        .logo {
+            max-height: 100px;
+            margin-bottom: 1rem;
+        }
+        .survey-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .survey-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            padding: 1rem;
+            background: #f5f5f5;
+            border-radius: 8px;
+        }
+        .section {
+            margin-bottom: 2rem;
+            padding: 1rem;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        .photo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        .photo-grid img {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .field {
+            margin-bottom: 1rem;
+        }
+        .field-label {
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+        .field-value {
+            padding: 0.5rem;
+            background: #f9f9f9;
+            border-radius: 4px;
+        }
+        .survey-navigation {
+            position: sticky;
+            top: 0;
+            background: white;
+            padding: 1rem;
+            border-bottom: 1px solid #ddd;
+            z-index: 100;
+        }
+        .survey-selector {
+            padding: 0.5rem;
+            margin-right: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        {{#if logo}}
+            <img src="{{logo}}" alt="{{title}} Logo" class="logo">
+        {{/if}}
+        <h1>{{title}} - Survey Responses</h1>
+    </div>
+
+    <div class="survey-container">
+        {{#if surveys.length}}
+            <div class="survey-navigation">
+                <select id="surveySelector" class="survey-selector" onchange="showSurvey(this.value)">
+                    {{#each surveys}}
+                        <option value="{{@index}}">{{customer_name}} - {{formatDate created_at}}</option>
+                    {{/each}}
+                </select>
+                <a href="/{{dealerId}}" class="button">Back to Form</a>
+            </div>
+
+            {{#each surveys}}
+            <div class="survey-form" id="survey-{{@index}}" style="display: {{#if @first}}block{{else}}none{{/if}};">
+                <div class="survey-header">
+                    <h2>{{customer_name}}</h2>
+                    <div>
+                        <p>Submitted by: {{rep_name}}</p>
+                        <p>Date: {{formatDate created_at}}</p>
+                    </div>
+                </div>
+
+                <!-- Customer Information -->
+                <div class="section">
+                    <h3>Customer Information</h3>
+                    <div class="field">
+                        <div class="field-label">Name</div>
+                        <div class="field-value">{{customer_name}}</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-label">Address</div>
+                        <div class="field-value">{{customer_address}}</div>
+                    </div>
+                </div>
+
+                <!-- House Photos -->
+                <div class="section">
+                    <h3>House Photos</h3>
+                    {{#if front_house_photos.length}}
+                    <h4>Front View</h4>
+                    <div class="photo-grid">
+                        {{#each front_house_photos}}
+                            <img src="{{this}}" alt="Front house photo" onclick="openImageModal('{{this}}')">
+                        {{/each}}
+                    </div>
+                    {{/if}}
+
+                    {{#if back_house_photos.length}}
+                    <h4>Back View</h4>
+                    <div class="photo-grid">
+                        {{#each back_house_photos}}
+                            <img src="{{this}}" alt="Back house photo" onclick="openImageModal('{{this}}')">
+                        {{/each}}
+                    </div>
+                    {{/if}}
+
+                    {{#if left_house_photos.length}}
+                    <h4>Left Side</h4>
+                    <div class="photo-grid">
+                        {{#each left_house_photos}}
+                            <img src="{{this}}" alt="Left side photo" onclick="openImageModal('{{this}}')">
+                        {{/each}}
+                    </div>
+                    {{/if}}
+
+                    {{#if right_house_photos.length}}
+                    <h4>Right Side</h4>
+                    <div class="photo-grid">
+                        {{#each right_house_photos}}
+                            <img src="{{this}}" alt="Right side photo" onclick="openImageModal('{{this}}')">
+                        {{/each}}
+                    </div>
+                    {{/if}}
+                </div>
+
+                <!-- Roof Information -->
+                <div class="section">
+                    <h3>Roof Information</h3>
+                    <div class="field">
+                        <div class="field-label">Roof Type</div>
+                        <div class="field-value">{{roof_type}}</div>
+                    </div>
+                    
+                    {{#if roof_condition_photos.length}}
+                    <h4>Roof Condition</h4>
+                    <div class="photo-grid">
+                        {{#each roof_condition_photos}}
+                            <img src="{{this}}" alt="Roof condition photo" onclick="openImageModal('{{this}}')">
+                        {{/each}}
+                    </div>
+                    {{/if}}
+
+                    {{#if roof_tilt_photos.length}}
+                    <h4>Roof Tilt</h4>
+                    <div class="photo-grid">
+                        {{#each roof_tilt_photos}}
+                            <img src="{{this}}" alt="Roof tilt photo" onclick="openImageModal('{{this}}')">
+                        {{/each}}
+                    </div>
+                    {{/if}}
+
+                    {{#if roof_all_sides_photos.length}}
+                    <h4>All Sides</h4>
+                    <div class="photo-grid">
+                        {{#each roof_all_sides_photos}}
+                            <img src="{{this}}" alt="Roof all sides photo" onclick="openImageModal('{{this}}')">
+                        {{/each}}
+                    </div>
+                    {{/if}}
+                </div>
+
+                <!-- Attic Information -->
+                <div class="section">
+                    <h3>Attic Information</h3>
+                    <div class="field">
+                        <div class="field-label">Has Attic</div>
+                        <div class="field-value">{{has_attic}}</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-label">Stored Items in Attic</div>
+                        <div class="field-value">{{stored_items_in_attic}}</div>
+                    </div>
+
+                    {{#if attic_photos.length}}
+                    <h4>Attic Photos</h4>
+                    <div class="photo-grid">
+                        {{#each attic_photos}}
+                            <img src="{{this}}" alt="Attic photo" onclick="openImageModal('{{this}}')">
+                        {{/each}}
+                    </div>
+                    {{/if}}
+
+                    {{#if rafter_depth_photos.length}}
+                    <h4>Rafter Depth</h4>
+                    <div class="photo-grid">
+                        {{#each rafter_depth_photos}}
+                            <img src="{{this}}" alt="Rafter depth photo" onclick="openImageModal('{{this}}')">
+                        {{/each}}
+                    </div>
+                    {{/if}}
+
+                    {{#if rafter_spacing_photos.length}}
+                    <h4>Rafter Spacing</h4>
+                    <div class="photo-grid">
+                        {{#each rafter_spacing_photos}}
+                            <img src="{{this}}" alt="Rafter spacing photo" onclick="openImageModal('{{this}}')">
+                        {{/each}}
+                    </div>
+                    {{/if}}
+                </div>
+
+                <!-- Electrical Panel Information -->
+                <div class="section">
+                    <h3>Electrical Panel Information</h3>
+                    <div class="field">
+                        <div class="field-label">Panel Location</div>
+                        <div class="field-value">{{panel_location}}</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-label">Main Panel Rating</div>
+                        <div class="field-value">{{main_panel_rating}}</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-label">Bus Bar Rating</div>
+                        <div class="field-value">{{bus_bar_rating}}</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-label">Extra Breaker Space</div>
+                        <div class="field-value">{{extra_breaker_space}}</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-label">Breaker Spots Count</div>
+                        <div class="field-value">{{breaker_spots_count}}</div>
+                    </div>
+
+                    {{#if main_panel_photos.length}}
+                    <h4>Main Panel Photos</h4>
+                    <div class="photo-grid">
+                        {{#each main_panel_photos}}
+                            <img src="{{this}}" alt="Main panel photo" onclick="openImageModal('{{this}}')">
+                        {{/each}}
+                    </div>
+                    {{/if}}
+
+                    {{#if panel_breakers_photos.length}}
+                    <h4>Panel Breakers</h4>
+                    <div class="photo-grid">
+                        {{#each panel_breakers_photos}}
+                            <img src="{{this}}" alt="Panel breakers photo" onclick="openImageModal('{{this}}')">
+                        {{/each}}
+                    </div>
+                    {{/if}}
+                </div>
+
+                <!-- Sub Panel Information -->
+                {{#if has_sub_panel}}
+                <div class="section">
+                    <h3>Sub Panel Information</h3>
+                    <div class="field">
+                        <div class="field-label">Sub Panel Rating</div>
+                        <div class="field-value">{{sub_panel_rating}}</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-label">Sub Panel Breaker Space</div>
+                        <div class="field-value">{{sub_panel_breaker_space}}</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-label">Sub Panel Bus Bar Rating</div>
+                        <div class="field-value">{{sub_panel_bus_bar_rating}}</div>
+                    </div>
+
+                    {{#if sub_panel_photos.length}}
+                    <h4>Sub Panel Photos</h4>
+                    <div class="photo-grid">
+                        {{#each sub_panel_photos}}
+                            <img src="{{this}}" alt="Sub panel photo" onclick="openImageModal('{{this}}')">
+                        {{/each}}
+                    </div>
+                    {{/if}}
+                </div>
+                {{/if}}
+
+                <!-- Utility Meter Information -->
+                <div class="section">
+                    <h3>Utility Meter Information</h3>
+                    <div class="field">
+                        <div class="field-label">Utility Meter on Wall</div>
+                        <div class="field-value">{{utility_meter_on_wall}}</div>
+                    </div>
+
+                    {{#if utility_meter_close_photos.length}}
+                    <h4>Close-up Photos</h4>
+                    <div class="photo-grid">
+                        {{#each utility_meter_close_photos}}
+                            <img src="{{this}}" alt="Utility meter close-up photo" onclick="openImageModal('{{this}}')">
+                        {{/each}}
+                    </div>
+                    {{/if}}
+
+                    {{#if utility_meter_far_photos.length}}
+                    <h4>Far View Photos</h4>
+                    <div class="photo-grid">
+                        {{#each utility_meter_far_photos}}
+                            <img src="{{this}}" alt="Utility meter far view photo" onclick="openImageModal('{{this}}')">
+                        {{/each}}
+                    </div>
+                    {{/if}}
+                </div>
+
+                <!-- Existing System Information -->
+                {{#if has_existing_system}}
+                <div class="section">
+                    <h3>Existing System Information</h3>
+                    <div class="field">
+                        <div class="field-label">System Type</div>
+                        <div class="field-value">{{existing_system_type}}</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-label">Inverter Count</div>
+                        <div class="field-value">{{existing_inverter_count}}</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-label">Panel Count</div>
+                        <div class="field-value">{{existing_panel_count}}</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-label">Battery Count</div>
+                        <div class="field-value">{{existing_battery_count}}</div>
+                    </div>
+
+                    {{#if existing_microinverter_photos.length}}
+                    <h4>Microinverter Photos</h4>
+                    <div class="photo-grid">
+                        {{#each existing_microinverter_photos}}
+                            <img src="{{this}}" alt="Existing microinverter photo" onclick="openImageModal('{{this}}')">
+                        {{/each}}
+                    </div>
+                    {{/if}}
+                </div>
+                {{/if}}
+
+                <!-- Additional Information -->
+                <div class="section">
+                    <h3>Additional Information</h3>
+                    <div class="field">
+                        <div class="field-label">Has HOA</div>
+                        <div class="field-value">{{has_hoa}}</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-label">Has WiFi</div>
+                        <div class="field-value">{{has_wifi}}</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-label">Additional Notes</div>
+                        <div class="field-value">{{additional_notes}}</div>
+                    </div>
+                </div>
+            </div>
+            {{/each}}
+        {{else}}
+            <div class="no-surveys">
+                <h2>No surveys found</h2>
+                <p>There are currently no survey responses for this dealer.</p>
+                <a href="/{{dealerId}}" class="button">Back to Form</a>
+            </div>
+        {{/if}}
+    </div>
+
+    <!-- Image Modal -->
+    <div id="imageModal" class="modal">
+        <span class="close">&times;</span>
+        <img id="modalImage" src="" alt="Full size image">
+    </div>
+
+    <script>
+        function showSurvey(index) {
+            document.querySelectorAll('.survey-form').forEach(form => {
+                form.style.display = 'none';
+            });
+            document.getElementById(`survey-${index}`).style.display = 'block';
+        }
+
+        function openImageModal(imageUrl) {
+            const modal = document.getElementById('imageModal');
+            const modalImg = document.getElementById('modalImage');
+            modal.style.display = "block";
+            modalImg.src = imageUrl;
+        }
+
+        // Close modal when clicking the X
+        document.querySelector('.close').onclick = function() {
+            document.getElementById('imageModal').style.display = "none";
+        }
+
+        // Close modal when clicking outside the image
+        window.onclick = function(event) {
+            const modal = document.getElementById('imageModal');
+            if (event.target == modal) {
+                modal.style.display = "none";
+            }
+        }
+    </script>
+</body>
+</html>

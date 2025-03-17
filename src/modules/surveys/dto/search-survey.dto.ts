@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsNumber, IsPositive, Min, Max, IsBoolean } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsPositive, IsBoolean } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class SearchSurveyDto {
@@ -9,11 +9,19 @@ export class SearchSurveyDto {
 
   @IsString()
   @IsOptional()
-  search?: string;
+  customer_name?: string;
+
+  @IsString()
+  @IsOptional()
+  customer_address?: string;
 
   @IsString()
   @IsOptional()
   dealer_id?: string;
+
+  @IsString()
+  @IsOptional()
+  dealer_name?: string;
 
   @IsString()
   @IsOptional()
@@ -22,13 +30,12 @@ export class SearchSurveyDto {
   @IsBoolean()
   @IsOptional()
   @Type(() => Boolean)
-  include_dealer_info?: boolean;
+  include_dealer_info: boolean = true;  // Default to true to always include dealer info
   
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @IsPositive()
-  @Min(1)
   page?: number = 1;
   
   @IsOptional()

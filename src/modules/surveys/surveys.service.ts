@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Survey } from './survey.entity';
@@ -112,29 +112,39 @@ export class SurveysService {
   }
 
   async search(searchDto: SearchSurveyDto) {
-    const query = this.surveyRepository.createQueryBuilder('survey');
+    const query = this.surveyRepository.createQueryBuilder('survey')
+      .leftJoinAndSelect('survey.dealer', 'dealer');  // Always join with dealer table
 
     if (searchDto.id) {
       query.andWhere('survey.id = :id', { id: searchDto.id });
     }
 
-    if (searchDto.search) {
-      query.andWhere(
-        '(survey.customer_name ILIKE :search OR survey.customer_address ILIKE :search)',
-        { search: `%${searchDto.search}%` }
-      );
+    if (searchDto.customer_name) {
+      query.andWhere('survey.customer_name ILIKE :customer_name', { 
+        customer_name: `%${searchDto.customer_name}%` 
+      });
+    }
+
+    if (searchDto.customer_address) {
+      query.andWhere('survey.customer_address ILIKE :customer_address', { 
+        customer_address: `%${searchDto.customer_address}%` 
+      });
     }
 
     if (searchDto.dealer_id) {
       query.andWhere('survey.dealer_id = :dealer_id', { dealer_id: searchDto.dealer_id });
     }
 
-    if (searchDto.rep_name) {
-      query.andWhere('survey.rep_name ILIKE :rep_name', { rep_name: `%${searchDto.rep_name}%` });
+    if (searchDto.dealer_name) {
+      query.andWhere('dealer.name ILIKE :dealer_name', { 
+        dealer_name: `%${searchDto.dealer_name}%` 
+      });
     }
 
-    if (searchDto.include_dealer_info) {
-      query.leftJoinAndSelect('survey.dealer', 'dealer');
+    if (searchDto.rep_name) {
+      query.andWhere('survey.rep_name ILIKE :rep_name', { 
+        rep_name: `%${searchDto.rep_name}%` 
+      });
     }
 
     const page = searchDto.page || 1;
@@ -155,5 +165,71 @@ export class SurveysService {
         totalPages: Math.ceil(total / limit)
       }
     };
+  }
+
+  async getDealerResponses(dealerId: string) {
+    try {
+      const surveys = await this.surveyRepository.find({
+        where: { dealer_id: dealerId },
+        select: [
+          'id',
+          'dealer_id',
+          'customer_name',
+          'customer_address',
+          'rep_name',
+          'created_at',
+          'response_data',
+          'form_payload'
+        ],
+        order: {
+          created_at: 'DESC'
+        }
+      });
+
+      return surveys;
+    } catch (error) {
+      this.logger.error(`Failed to get dealer responses: ${error.message}`);
+      throw error;
+    }
+  }
+
+  async findOne(numericId: number) {
+    try {
+      const survey = await this.surveyRepository.findOne({
+        where: { id: numericId },
+        relations: ['dealer'],
+      });
+
+      if (!survey) {
+        throw new NotFoundException(`Survey with ID ${numericId} not found`);
+      }
+
+      return survey;
+    } catch (error) {
+      this.logger.error(`Failed to find survey: ${error.message}`);
+      throw error;
+    }
+  }
+
+  async findByDealerAndCustomer(dealerId: string, customerName: string, customerAddress: string) {
+    try {
+      const survey = await this.surveyRepository.findOne({
+        where: {
+          dealer_id: dealerId,
+          customer_name: customerName,
+          customer_address: customerAddress
+        },
+        relations: ['dealer']
+      });
+
+      if (!survey) {
+        throw new NotFoundException('Survey not found');
+      }
+
+      return survey;
+    } catch (error) {
+      this.logger.error(`Failed to find survey: ${error.message}`);
+      throw error;
+    }
   }
 }

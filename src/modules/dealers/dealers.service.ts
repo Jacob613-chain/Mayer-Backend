@@ -1,3 +1,4 @@
+
 import { Injectable, Logger, NotFoundException, InternalServerErrorException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -7,6 +8,7 @@ import { CreateDealerDto } from './dto/create-dealer.dto';
 import { UpdateDealerDto } from './dto/update-dealer.dto';
 import { SearchDealerDto } from './dto/search-dealer.dto';
 import * as crypto from 'crypto';
+import { Survey } from '../surveys/survey.entity';
 
 @Injectable()
 export class DealersService {
@@ -15,6 +17,8 @@ export class DealersService {
   constructor(
     @InjectRepository(Dealer)
     private dealersRepository: Repository<Dealer>,
+    @InjectRepository(Survey)
+    private surveyRepository: Repository<Survey>,
     private s3Service: S3Service,
   ) {}
 
@@ -106,25 +110,55 @@ export class DealersService {
     }
   }
 
-  async findByDealerId(dealerId: string): Promise<Dealer> {
-    try {
-      const dealer = await this.dealersRepository.findOne({
-        where: { dealer_id: dealerId },
-        select: ['id', 'dealer_id', 'name', 'logo', 'reps']
+  async findByDealerId(
+    dealerId: string, 
+    customerName?: string
+  ) {
+    this.logger.debug(`Finding dealer with dealerId: ${dealerId} and customerName: ${customerName}`);
+
+    // First try to find by dealer_id
+    let queryBuilder = this.dealersRepository
+      .createQueryBuilder('dealer')
+      .leftJoinAndSelect('dealer.surveys', 'survey');
+
+    // Check if dealerId is numeric (survey ID)
+    if (/^\d+$/.test(dealerId)) {
+      // If numeric, first find the survey to get its dealer_id
+      const survey = await this.surveyRepository.findOne({
+        where: { id: parseInt(dealerId) }
       });
 
-      if (!dealer) {
-        throw new NotFoundException(`Dealer with dealer_id "${dealerId}" not found`);
+      if (!survey) {
+        throw new NotFoundException(`Survey with ID "${dealerId}" not found`);
       }
 
-      return dealer; // No need to transform the URL as we're storing full URLs now
-    } catch (error) {
-      if (error instanceof NotFoundException) {
-        throw error;
-      }
-      this.logger.error(`Failed to fetch dealer by dealer_id: ${error.message}`);
-      throw error;
+      // Use the survey's dealer_id
+      queryBuilder = queryBuilder.where('dealer.dealer_id = :dealerId', { 
+        dealerId: survey.dealer_id 
+      });
+    } else {
+      // Use dealer_id directly if not numeric
+      queryBuilder = queryBuilder.where('dealer.dealer_id = :dealerId', { 
+        dealerId 
+      });
     }
+
+    // Add customer name filter if provided
+    if (customerName) {
+      queryBuilder.andWhere('survey.customer_name = :customerName', { 
+        customerName 
+      });
+    }
+
+    const dealer = await queryBuilder.getOne();
+
+    if (!dealer) {
+      throw new NotFoundException(`Dealer not found for the given ID "${dealerId}"`);
+    }
+
+    dealer.surveys = dealer.surveys || [];
+    this.logger.debug(`Found dealer: ${dealer.name} with ${dealer.surveys.length} surveys`);
+    return dealer;
   }
 
   async search(searchDto: SearchDealerDto) {

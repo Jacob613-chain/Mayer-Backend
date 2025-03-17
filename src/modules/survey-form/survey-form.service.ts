@@ -48,11 +48,16 @@ export class SurveyFormService {
 
   async getDealerSurveys(dealerId: string) {
     try {
-      const result = await this.surveysService.search({
-        dealer_id: dealerId,
-        limit: 100
-      });
-      return result.data;
+      // Use the surveysService to get all responses for the dealer
+      const surveys = await this.surveysService.getDealerResponses(dealerId);
+      
+      if (!surveys || surveys.length === 0) {
+        this.logger.debug(`No surveys found for dealer ${dealerId}`);
+        return [];
+      }
+
+      this.logger.debug(`Found ${surveys.length} surveys for dealer ${dealerId}`);
+      return surveys;
     } catch (error) {
       this.logger.error(`Error getting dealer surveys: ${error.message}`);
       throw error;

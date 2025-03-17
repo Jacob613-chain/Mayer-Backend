@@ -47,19 +47,33 @@ export class DealersController {
       dealer_id: dealer.dealer_id,
       name: dealer.name,
       logo: logoUrl,
-      reps: dealer.reps
+      reps: dealer.reps,
+      surveys: dealer.surveys?.map(survey => ({
+        id: survey.id,
+        customer_name: survey.customer_name,
+        customer_address: survey.customer_address,
+        rep_name: survey.rep_name,
+        created_at: survey.created_at,
+        response_data: survey.form_payload || survey.response_data // Use form_payload as fallback
+      })) || []
     };
   }
 
   @Get('by-dealer-id/:dealer_id')
-  async findByDealerId(@Param('dealer_id') dealerId: string) {
-    this.logger.debug(`Received request for dealer_id: ${dealerId}`);
+  async findByDealerId(
+    @Param('dealer_id') dealerId: string,
+    @Query('customer_name') customerName?: string
+  ) {
+    this.logger.debug(`Request received - dealer_id: ${dealerId}, customer_name: ${customerName}`);
+    
     try {
-      const dealer = await this.dealersService.findByDealerId(dealerId);
-      this.logger.debug(`Found dealer:`, dealer);
-      return this.formatDealerResponse(dealer);
+      const dealer = await this.dealersService.findByDealerId(dealerId, customerName);
+      const response = this.formatDealerResponse(dealer);
+      
+      this.logger.debug(`Returning dealer with ${response.surveys.length} surveys`);
+      return response;
     } catch (error) {
-      this.logger.error(`Error finding dealer:`, error);
+      this.logger.error(`Error finding dealer:`, error.stack);
       throw error;
     }
   }

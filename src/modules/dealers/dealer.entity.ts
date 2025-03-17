@@ -24,6 +24,6 @@ export class Dealer {
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   updated_at: Date;
 
-  @OneToMany(() => Survey, survey => survey.dealer)
+  @OneToMany(() => Survey, survey => survey.dealer, { eager: false })
   surveys: Survey[];
 }
