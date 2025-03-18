@@ -88,7 +88,9 @@ export class SurveyFormController {
         existing_battery_count: formData.existing_battery_count,
         has_hoa: formData.has_hoa,
         has_wifi: formData.has_wifi,
-        additional_notes: formData.additional_notes
+        additional_notes: formData.additional_notes,
+        ground_mount_video: formData.ground_mount_video,
+        trenching_type: formData.trenching_type,
       };
 
       // Pass the raw files to the service
@@ -164,6 +166,7 @@ export class SurveyFormController {
           has_hoa: survey.response_data?.has_hoa,
           has_wifi: survey.response_data?.has_wifi,
           additional_notes: survey.response_data?.additional_notes,
+          trenching_type: survey.response_data?.trenching_type,
           // Include all photo arrays
           roof_condition_photos: survey.response_data?.roof_condition_photos || [],
           roof_tilt_photos: survey.response_data?.roof_tilt_photos || [],
@@ -187,7 +190,10 @@ export class SurveyFormController {
           back_house_photos: survey.response_data?.back_house_photos || [],
           left_house_photos: survey.response_data?.left_house_photos || [],
           right_house_photos: survey.response_data?.right_house_photos || [],
-          front_mail_number_photos: survey.response_data?.front_mail_number_photos || []
+          front_mail_number_photos: survey.response_data?.front_mail_number_photos || [],
+          ground_mount_location_photos: survey.response_data?.ground_mount_location_photos || [],
+          ground_mount_distance_photos: survey.response_data?.ground_mount_distance_photos || [],
+          ground_mount_video: survey.response_data?.ground_mount_video || null,
         }))
       };
     } catch (error) {

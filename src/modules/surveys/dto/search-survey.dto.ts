@@ -30,7 +30,7 @@ export class SearchSurveyDto {
   @IsBoolean()
   @IsOptional()
   @Type(() => Boolean)
-  include_dealer_info: boolean = true;  // Default to true to always include dealer info
+  include_dealer_info: boolean = true;
   
   @IsOptional()
   @Type(() => Number)

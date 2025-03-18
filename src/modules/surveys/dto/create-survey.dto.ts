@@ -99,5 +99,11 @@ export class CreateSurveyDto {
   additional_notes?: string;
 
   @IsOptional()
+  ground_mount_video?: string;
+
+  @IsOptional()
+  trenching_type?: 'dirt' | 'gravel' | 'concrete' | 'grass';
+
+  @IsOptional()
   response_data?: any;
 } 

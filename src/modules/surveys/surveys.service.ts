@@ -58,7 +58,10 @@ export class SurveysService {
         back_house_photos: [],
         left_house_photos: [],
         right_house_photos: [],
-        front_mail_number_photos: []
+        front_mail_number_photos: [],
+        ground_mount_location_photos: [],
+        ground_mount_distance_photos: [],
+        ground_mount_video: null,
       };
 
       // Group files by their fieldnames
